@@ -50,7 +50,7 @@ function AuthForm({ onSuccess }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
-    const BASE_URL = "http://localhost:3000";
+    const BASE_URL = "https://lachatbot.onrender.com";
     const endpoint = mode === "login" ? `${BASE_URL}/login` : `${BASE_URL}/signup`;
 
     async function handleSubmit(e) {
@@ -133,7 +133,7 @@ function ChatUI({ token, onLogout }) {
     useEffect(() => {
   const fetchChats = async () => {
     const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:3000/chats', {
+    const res = await fetch('https://lachatbot.onrender.com/chats', {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
@@ -165,7 +165,7 @@ setMessages(
         setLoading(true);
         console.log("token:", token);
         console.log("userText:", userText);
-         const BASE_URL = "http://localhost:3000";
+         const BASE_URL = "https://lachatbot.onrender.com";
         try {
             const res = await fetch(`${BASE_URL}/chat`, {
                 method: "POST",

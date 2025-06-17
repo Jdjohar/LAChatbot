@@ -28,7 +28,7 @@ const normalizeDomain = (domain) => {
     .replace(/\/$/, '');
 };
 
-const STATIC_DOMAINS = ['https://chatbot-blue-zeta.vercel.app'];
+const STATIC_DOMAINS = ['https://la-chatbot.vercel.app'];
 
 const corsOptions = {
   origin: async function (origin, callback, req) {
