@@ -6,7 +6,7 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'https://chatbotbackend-mpah.onrender.com';
+  const apiUrl = 'https://lachatbot.onrender.com';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -331,7 +331,7 @@
           return e('div', { onClick: this.toggleMinimize }, [
             e('img', {
               id: 'chatbot-minimized-img',
-              src: settings.avatar || 'https://i.ibb.co/5hyptfLV/Dumala.png',
+              src: settings.avatar || 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
               alt: 'Chatbot'
             })
           ]);
@@ -339,7 +339,7 @@
         return e('div', null, [
           e('div', { id: 'chatbot-header' }, [
             settings.avatar ? e('img', { id: 'chatbot-avatar', src: settings.avatar, alt: 'Avatar' }) : null,
-            e('span', { id: 'chatbot-title' }, 'AI Assistant'),
+            e('span', { id: 'chatbot-title' }, 'LA'),
             e('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '−')
           ]),
           e('div', { id: 'chatbot-messages' }, 

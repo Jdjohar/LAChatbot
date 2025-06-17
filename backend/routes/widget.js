@@ -8,7 +8,7 @@ router.get('/:userId', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const embedCode = `
-<script data-user-id="${user._id}" data-api-key="${user.widgetApiKey}" src="https://chatbotbackend-mpah.onrender.com/static/chatbot-widget.js"></script>
+<script data-user-id="${user._id}" data-api-key="${user.widgetApiKey}" src="https://lachatbot.onrender.com/static/chatbot-widget.js"></script>
     `;
     res.json({ embedCode });
   } catch (err) {
