@@ -50,8 +50,8 @@
         `}
       }
       #chatbot-minimized-img {
-        width: 40px;
-        height: 40px;
+        width: 55px;
+        height: 55px;
         object-fit: cover;
         border-radius: 50%;
       }
