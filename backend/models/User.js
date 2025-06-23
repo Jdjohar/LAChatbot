@@ -8,6 +8,9 @@ const userSchema = new mongoose.Schema({
   questionCount: { type: Number, default: 0 },
    plan: { type: String, enum: ['free', 'paid'], default: 'free' },
   subscriptionStatus: { type: String, enum: ['active', 'inactive', 'pending'], default: 'active' },
+  
+  isAdmin: { type: Boolean, default: false },
+  
   chatHistory: [
     {
       message: String,

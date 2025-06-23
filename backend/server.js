@@ -48,7 +48,8 @@ const corsOptions = {
         console.warn('Rejecting undefined origin for non-static/non-OPTIONS request:', req ? req.url : 'undefined');
         return callback(new Error('Origin required for this request'));
       }
-      const normalizedOrigin = normalizeDomain(origin);
+      // const normalizedOrigin = normalizeDomain(origin);
+      const normalizedOrigin = origin;
       console.log('Normalized origin:', normalizedOrigin);
       if (STATIC_DOMAINS.includes(normalizedOrigin) || normalizedOrigin.startsWith('http://localhost')) {
         console.log('Allowing static or localhost origin:', normalizedOrigin);
@@ -68,7 +69,7 @@ const corsOptions = {
   },
   credentials: true,
   allowedHeaders: ['Authorization', 'Content-Type', 'X-API-Key'],
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   preflightContinue: false
 };
 
@@ -83,6 +84,8 @@ console.log('MongoDB connected');
 const UPGRADE_MESSAGE = 'You have reached your plan limit. Upgrade to the paid plan for unlimited questions and uploads at https://careerengine.in/upgrade.';
 
 const checkLimits = async (req, res, next) => {
+  console.log(req.user, "sddsds");
+  
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -112,6 +115,26 @@ function authenticateToken(req, res, next) {
     const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
     req.user = { id: decoded.userId };
     next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+function authenticateAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Missing token' });
+  try {
+    const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+    User.findById(decoded.userId).then(user => {
+      if (!user || !user.isAdmin) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      req.user = { id: decoded.userId };
+      next();
+    }).catch(err => {
+      console.error('Admin auth error:', err);
+      res.status(500).json({ error: 'Server error' });
+    });
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
@@ -155,6 +178,36 @@ app.post('/login', async (req, res) => {
     });
 });
 
+app.get('/user/uploads', async (req, res) => {
+  const { userId, visitorId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  try {
+    const filter = { userId: userId.toString() };
+    if (visitorId) filter.visitorId = visitorId;
+    const queryResponse = await index.query({
+      vector: Array(1536).fill(0), // Dummy vector for metadata-only query
+      topK: 1000, // Adjust for large datasets
+      includeMetadata: true,
+      filter
+    });
+    console.log('Uploads query:', {
+      userId,
+      visitorId,
+      matchCount: queryResponse.matches.length
+    });
+    const uploads = queryResponse.matches.map(match => ({
+      filename: match.metadata.filename,
+      visitorId: match.metadata.visitorId,
+      text: match.metadata.text,
+      vectorId: match.id,
+      createdAt: match.metadata.createdAt || new Date().toISOString() // Add timestamp if available
+    }));
+    res.json({ uploads });
+  } catch (err) {
+    console.error('Fetch uploads error:', err);
+    res.status(500).json({ error: 'Failed to fetch uploads' });
+  }
+});
 app.get('/user/domains', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('allowedDomains');
@@ -166,32 +219,160 @@ app.get('/user/domains', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/add-domain', authenticateToken, async (req, res) => {
-  const { domain } = req.body;
-  if (!domain || typeof domain !== 'string') {
-    return res.status(400).json({ error: 'Invalid domain' });
-  }
-  const normalizedDomain = normalizeDomain(domain);
-  const domainRegex = /^https?:\/\/([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/;
-  if (!domainRegex.test(normalizedDomain)) {
-    return res.status(400).json({ error: 'Invalid domain format. Must be a valid URL (e.g., https://customerwebsite.com)' });
+app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
+  const { data, filename, visitorId = 'default' } = req.body;
+  console.log('Upload request:', { userId: req.user.id, visitorId, filename, dataLength: data?.length });
+  if (!data || !filename) {
+    return res.status(400).json({ error: 'Data and filename are required' });
   }
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.allowedDomains.includes(normalizedDomain)) {
-      user.allowedDomains.push(normalizedDomain);
-      await user.save();
-      console.log('Domain added:', { userId: req.user.id, domain: normalizedDomain });
+    const chunkSize = 5000;
+    const chunks = [];
+    for (let i = 0; i < data.length; i += chunkSize) {
+      chunks.push(data.slice(i, i + chunkSize));
     }
-    res.json({ message: 'Domain added successfully' });
+    const vectors = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i].trim();
+      if (!chunk) continue;
+      console.log(openai,"Check openai API");
+      
+      const embeddingResponse = await openai.embeddings.create({
+        model: 'text-embedding-ada-002',
+        input: chunk,
+      });
+      const embedding = embeddingResponse.data[0].embedding;
+      const vectorId = `${req.user.id}_${visitorId}_${filename}_${i}`;
+      vectors.push({
+        id: vectorId,
+        values: embedding,
+        metadata: {
+          userId: req.user.id.toString(),
+          visitorId,
+          text: chunk,
+          filename,
+          createdAt: new Date().toISOString() // Add timestamp
+        }
+      });
+      console.log('Upserting vector:', {
+        id: vectorId,
+        userId: req.user.id,
+        visitorId,
+        filename,
+        textLength: chunk.length
+      });
+    }
+    if (vectors.length > 0) {
+      await index.upsert(vectors);
+      console.log('Vectors upserted:', { vectorCount: vectors.length, userId: req.user.id, visitorId });
+    } else {
+      console.warn('No vectors to upsert for upload:', { userId: req.user.id, visitorId, filename });
+    }
+    if (user.plan === 'free') {
+      user.uploadCount += 1;
+    }
+    await user.save();
+    res.status(200).json({ message: 'Data embedded and stored successfully' });
   } catch (err) {
-    console.error('Add domain error:', err);
-    res.status(500).json({ error: 'Failed to add domain' });
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Error processing upload' });
+  }
+});
+app.get('/vectors', authenticateToken, async (req, res) => {
+  
+  try {
+    const { queryText = null } = req.query;
+
+    let vector;
+    if (queryText) {
+      const embeddingRes = await openai.embeddings.create({
+        model: 'text-embedding-ada-002',
+        input: queryText
+      });
+      vector = embeddingRes.data[0].embedding;
+    } else {
+      // default query vector (all zeros = won't match anything well)
+      vector = Array(1536).fill(0);
+    }
+
+    const results = await index.query({
+      vector,
+      topK: 10,
+      includeMetadata: true,
+      
+    },
+  'req.user.id.toString()'
+);
+
+    res.json(results.matches);
+  } catch (err) {
+    console.error('Error fetching vectors:', err);
+    res.status(500).json({ error: 'Failed to fetch vectors' });
   }
 });
 
-app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
+app.delete('/vectors/:id', authenticateToken, async (req, res) => {
+  const vectorId = req.params.id;
+  const namespace = req.user.id.toString(); 
+
+  try {
+    // Call Pinecone's delete method with vector ID and namespace
+    await index.deleteOne(vectorId, namespace); // ✅ if you're using `.deleteOne`
+
+    res.status(200).json({ message: 'Vector deleted successfully', id: vectorId });
+  } catch (error) {
+    console.error('Error deleting vector:', error);
+    res.status(500).json({ error: 'Failed to delete vector' });
+  }
+});
+
+
+app.put('/vectors/:id', authenticateToken, async (req, res) => {
+  try {
+    const vectorId = req.params.id;
+    const { newText } = req.body;
+
+    if (!newText) {
+      return res.status(400).json({ error: 'newText is required' });
+    }
+
+    // Delete old vector
+    await index.delete1({
+      ids: [vectorId],
+      namespace: req.user.id.toString()
+    });
+
+    // Create new embedding
+    const embeddingRes = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: newText
+    });
+    const newEmbedding = embeddingRes.data[0].embedding;
+
+    // Upsert updated vector
+    await index.upsert({
+      vectors: [{
+        id: vectorId,
+        values: newEmbedding,
+        metadata: {
+          userId: req.user.id.toString(),
+          text: newText,
+          updatedAt: new Date().toISOString()
+        }
+      }],
+      namespace: req.user.id.toString()
+    });
+
+    res.json({ message: `Vector ${vectorId} updated successfully` });
+  } catch (err) {
+    console.error('Error updating vector:', err);
+    res.status(500).json({ error: 'Failed to update vector' });
+  }
+}); 
+
+app.post('/upload',authenticateToken,  checkLimits, async (req, res) => {
   const { data, filename, visitorId = 'default' } = req.body;
   console.log('Upload request:', { userId: req.user.id, visitorId, filename, dataLength: data?.length });
   if (!data || !filename) {

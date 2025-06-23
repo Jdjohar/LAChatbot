@@ -6,7 +6,7 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'https://lachatbot.onrender.com';
+  const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -339,7 +339,7 @@
         return e('div', null, [
           e('div', { id: 'chatbot-header' }, [
             settings.avatar ? e('img', { id: 'chatbot-avatar', src: settings.avatar, alt: 'Avatar' }) : null,
-            e('span', { id: 'chatbot-title' }, 'LA'),
+            e('span', { id: 'chatbot-title' }, 'Ask LV'),
             e('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '−')
           ]),
           e('div', { id: 'chatbot-messages' }, 
