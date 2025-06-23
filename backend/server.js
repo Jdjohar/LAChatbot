@@ -265,7 +265,7 @@ app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
       });
     }
     if (vectors.length > 0) {
-      await index.upsert(vectors);
+      await index.upsert(vectors, req.user.id.toString());
       console.log('Vectors upserted:', { vectorCount: vectors.length, userId: req.user.id, visitorId });
     } else {
       console.warn('No vectors to upsert for upload:', { userId: req.user.id, visitorId, filename });
@@ -372,64 +372,6 @@ app.put('/vectors/:id', authenticateToken, async (req, res) => {
   }
 }); 
 
-app.post('/upload',authenticateToken,  checkLimits, async (req, res) => {
-  const { data, filename, visitorId = 'default' } = req.body;
-  console.log('Upload request:', { userId: req.user.id, visitorId, filename, dataLength: data?.length });
-  if (!data || !filename) {
-    return res.status(400).json({ error: 'Data and filename are required' });
-  }
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const chunkSize = 2000;
-    const chunks = [];
-    for (let i = 0; i < data.length; i += chunkSize) {
-      chunks.push(data.slice(i, i + chunkSize));
-    }
-    const vectors = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i].trim();
-      if (!chunk) continue;
-      const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-ada-002',
-        input: chunk,
-      });
-      const embedding = embeddingResponse.data[0].embedding;
-      const vectorId = `${req.user.id}_${visitorId}_${filename}_${i}`;
-      vectors.push({
-        id: vectorId,
-        values: embedding,
-        metadata: {
-          userId: req.user.id.toString(),
-          visitorId,
-          text: chunk,
-          filename
-        }
-      });
-      console.log('Upserting vector:', {
-        id: vectorId,
-        userId: req.user.id,
-        visitorId,
-        filename,
-        textLength: chunk.length
-      });
-    }
-    if (vectors.length > 0) {
-      await index.upsert(vectors);
-      console.log('Vectors upserted:', { vectorCount: vectors.length, userId: req.user.id, visitorId });
-    } else {
-      console.warn('No vectors to upsert for upload:', { userId: req.user.id, visitorId, filename });
-    }
-    if (user.plan === 'free') {
-      user.uploadCount += 1;
-    }
-    await user.save();
-    res.status(200).json({ message: 'Data embedded and stored successfully' });
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Error processing upload' });
-  }
-});
 
 app.post('/chat', authenticateApiKey, async (req, res) => {
   const { message, visitorId } = req.body;
