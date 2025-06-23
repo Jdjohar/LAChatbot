@@ -110,7 +110,7 @@ function AuthForm({ onSuccess }) {
                 </button>
             </form>
 
-            {/* <p className="mt-6 text-center text-sm">
+            <p className="mt-6 text-center text-sm">
                 {mode === "login" ? "Don't have an account?" : "Already have an account?"}
                 <button
                     onClick={() => setMode(mode === "login" ? "signup" : "login")}
@@ -118,7 +118,7 @@ function AuthForm({ onSuccess }) {
                 >
                     {mode === "login" ? "Sign up" : "Log in"}
                 </button>
-            </p> */}
+            </p>
         </div>
     );
 }

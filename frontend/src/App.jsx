@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import ChatbotApp from './ChatbotApp';
 import Upload from './Upload';
 import WidgetSettings from './WidgetSettings';
+import UploadData from "./UploadViewers";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <Route path="/" element={<ChatbotApp />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/widget" element={<WidgetSettings />} />
+          <Route path="/uploadViewer" element={<UploadData />} />
         </Routes>
       </div>
     </Router>
