@@ -1,4 +1,4 @@
-(function() {
+(function () {
   const widgetDiv = document.createElement('div');
   widgetDiv.id = 'chatbot-widget';
   document.body.appendChild(widgetDiv);
@@ -21,12 +21,15 @@
     welcomeMessage: 'Hello! How can I assist you today?'
   };
 
+  const notificationSound = new Audio('https://www.soundjay.com/buttons/sounds/button-3.mp3');
+
   function applyStyles(settings, isMinimized) {
     const style = document.createElement('style');
     style.textContent = `
       #chatbot-widget {
         position: fixed;
         ${settings.position === 'bottom-right' ? 'bottom: 100px; right: 36px;' : 'bottom: 20px; left: 20px;'}
+        transition: all 0.3s ease-in-out;
         ${isMinimized ? `
           width: 60px;
           height: 60px;
@@ -38,13 +41,13 @@
           justify-content: center;
           z-index: 99999999999;
         ` : `
-          width: 300px;
-          height: 400px;
-          background: #fff;
-          border-radius: 10px;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-          z-index: 1000;
-          font-family: Arial, sans-serif;
+          width: 340px;
+          height: 440px;
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+          z-index: 100000;
+          font-family: 'Segoe UI', sans-serif;
           display: flex;
           flex-direction: column;
         `}
@@ -58,15 +61,15 @@
       #chatbot-header {
         background: ${settings.theme};
         color: white;
-        padding: 10px;
-        border-radius: 10px 10px 0 0;
+        padding: 12px;
+        border-radius: 16px 16px 0 0;
         display: flex;
         align-items: center;
         justify-content: space-between;
       }
       #chatbot-avatar {
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
         object-fit: cover;
         margin-right: 10px;
@@ -74,67 +77,90 @@
       #chatbot-title {
         flex: 1;
         text-align: center;
+        font-weight: bold;
       }
       #chatbot-minimize-btn {
         background: none;
         border: none;
         color: white;
-        font-size: 16px;
+        font-size: 20px;
         cursor: pointer;
       }
       #chatbot-messages {
         flex: 1;
-        height: 300px;
         overflow-y: auto;
-        padding: 10px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
       }
       #chatbot-input {
         display: flex;
         padding: 10px;
-        border-top: 1px solid #ddd;
+        border-top: 1px solid #e5e7eb;
+        background: #f9fafb;
       }
       #chatbot-input input {
         flex: 1;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
+        padding: 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
       }
       #chatbot-input button {
-        padding: 8px 12px;
-        margin-left: 5px;
+        padding: 10px 14px;
+        margin-left: 6px;
         background: ${settings.theme};
         color: white;
         border: none;
-        border-radius: 5px;
+        border-radius: 8px;
         cursor: pointer;
+        font-weight: bold;
       }
       .message {
-        margin: 5px 0;
-        padding: 8px;
-        border-radius: 5px;
-        display: flex;
-        align-items: center;
+        max-width: 80%;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        white-space: pre-wrap;
+        padding: 10px 14px;
+        border-radius: 18px;
+        display: inline-block;
+        animation: fadeIn 0.3s ease-in-out;
+        transition: all 0.2s ease-in-out;
+        font-size: 14px;
+        line-height: 1.4;
       }
       .user {
-        background: #e0f2fe;
-        margin-left: 10%;
+        align-self: flex-end;
+        background: #dcfce7;
+        border-bottom-right-radius: 4px;
       }
       .bot {
+        align-self: flex-start;
         background: #f3f4f6;
-        margin-right: 10%;
+        border-bottom-left-radius: 4px;
       }
       .bot img {
         width: 20px;
         height: 20px;
         border-radius: 50%;
-        margin-right: 5px;
+        margin-right: 6px;
       }
       .message a {
+        display: inline-block;
         color: ${settings.theme};
-        text-decoration: underline;
+        text-decoration: none;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .message a:hover {
-        text-decoration: none;
+        text-decoration: underline;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
       }
     `;
     document.head.appendChild(style);
@@ -147,7 +173,7 @@
 
   let scriptsLoaded = 0;
   function renderWidget() {
-    if (!window.React || !window.ReactDOM || !window.React.Component) {
+    if (!window.React || !window.ReactDOM) {
       widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies.</div>';
       return;
     }
@@ -160,7 +186,7 @@
           messages: [],
           input: '',
           loading: false,
-          isMinimized: true, // Start minimized
+          isMinimized: true,
           settings: defaultSettings
         };
         this.messagesEndRef = window.React.createRef();
@@ -173,7 +199,7 @@
       fetchSettings = async () => {
         try {
           const res = await fetch(`${apiUrl}/widget/settings/${userId}`);
-          if (!res.ok) throw new Error('Failed to fetch settings');
+          if (!res.ok) throw new Error('Settings load failed');
           const settings = await res.json();
           this.setState({ settings }, () => {
             applyStyles(settings, this.state.isMinimized);
@@ -182,13 +208,8 @@
               this.fetchChats();
             }
           });
-        } catch (err) {
-          console.error('Settings fetch error:', err);
+        } catch {
           applyStyles(defaultSettings, this.state.isMinimized);
-          if (!this.state.isMinimized) {
-            this.addWelcomeMessage();
-            this.fetchChats();
-          }
         }
       };
 
@@ -203,7 +224,6 @@
           const res = await fetch(`${apiUrl}/chats?visitorId=${visitorId}`, {
             headers: { 'X-API-Key': apiKey }
           });
-          if (!res.ok) throw new Error('Failed to fetch chats');
           const chats = await res.json();
           this.setState(prevState => ({
             messages: [
@@ -214,13 +234,9 @@
               ])
             ]
           }), this.scrollToBottom);
-        } catch (err) {
-          console.error('Error fetching chats:', err);
-          this.setState(prevState => ({
-            messages: [
-              ...prevState.messages,
-              { sender: 'bot', text: 'Error loading chat history. Please try again.' }
-            ]
+        } catch {
+          this.setState(prev => ({
+            messages: [...prev.messages, { sender: 'bot', text: 'Failed to load chat history.' }]
           }));
         }
       };
@@ -228,11 +244,13 @@
       sendMessage = async () => {
         const { input, messages } = this.state;
         if (!input.trim()) return;
+
         this.setState({ 
           loading: true, 
-          messages: [...messages, { sender: 'user', text: input }],
-          input: ''
+          input: '',
+          messages: [...messages, { sender: 'user', text: input }]
         }, this.scrollToBottom);
+
         try {
           const res = await fetch(`${apiUrl}/chat`, {
             method: 'POST',
@@ -243,36 +261,35 @@
             body: JSON.stringify({ message: input, visitorId })
           });
           const data = await res.json();
-          if (!res.ok) {
-            console.error('Chat API error:', data);
-            this.setState({
-              messages: [...this.state.messages, { sender: 'bot', text: data.reply || data.error || 'Error contacting server. Please try again.' }],
+          if (res.ok) {
+            notificationSound.play().catch(() => {});
+            this.setState(prev => ({
+              messages: [...prev.messages, { sender: 'bot', text: data.reply }],
               loading: false
-            }, this.scrollToBottom);
-            return;
+            }), this.scrollToBottom);
+          } else {
+            this.setState(prev => ({
+              messages: [...prev.messages, { sender: 'bot', text: data.reply || 'Server error' }],
+              loading: false
+            }), this.scrollToBottom);
           }
-          this.setState({
-            messages: [...this.state.messages, { sender: 'bot', text: data.reply }],
+        } catch {
+          this.setState(prev => ({
+            messages: [...prev.messages, { sender: 'bot', text: 'Network error.' }],
             loading: false
-          }, this.scrollToBottom);
-        } catch (err) {
-          console.error('Error sending message:', err);
-          this.setState({
-            messages: [...this.state.messages, { sender: 'bot', text: 'Error contacting server. Please try again.' }],
-            loading: false
-          }, this.scrollToBottom);
+          }), this.scrollToBottom);
         }
       };
 
       toggleMinimize = () => {
-        this.setState(prevState => {
-          const isMinimized = !prevState.isMinimized;
-          applyStyles(prevState.settings, isMinimized);
-          if (!isMinimized && prevState.messages.length === 0) {
+        this.setState(prev => {
+          const minimized = !prev.isMinimized;
+          applyStyles(prev.settings, minimized);
+          if (!minimized && prev.messages.length === 0) {
             this.addWelcomeMessage();
             this.fetchChats();
           }
-          return { isMinimized };
+          return { isMinimized: minimized };
         });
       };
 
@@ -285,35 +302,37 @@
         const phoneRegex = /(\+?\d{1,4}[-.\s]?\(?\d{1,3}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4})/g;
         const urlRegex = /\b(https?:\/\/[^\s<>"']+)|(www\.[^\s<>"']+)\b/g;
 
-        let parts = [];
-        let lastIndex = 0;
+        let parts = [], lastIndex = 0;
         const matches = [];
 
         let match;
-        while ((match = emailRegex.exec(text)) !== null) {
-          matches.push({ type: 'email', value: match[0], index: match.index, length: match[0].length });
-        }
-        while ((match = phoneRegex.exec(text)) !== null) {
-          matches.push({ type: 'phone', value: match[0], index: match.index, length: match[0].length });
-        }
-        while ((match = urlRegex.exec(text)) !== null) {
-          matches.push({ type: 'url', value: match[0], index: match.index, length: match[0].length });
-        }
+        while ((match = emailRegex.exec(text))) matches.push({ type: 'email', value: match[0], index: match.index, length: match[0].length });
+        while ((match = phoneRegex.exec(text))) matches.push({ type: 'phone', value: match[0], index: match.index, length: match[0].length });
+        while ((match = urlRegex.exec(text))) matches.push({ type: 'url', value: match[0], index: match.index, length: match[0].length });
 
         matches.sort((a, b) => a.index - b.index);
 
         matches.forEach(match => {
-          if (match.index > lastIndex) {
-            parts.push(text.slice(lastIndex, match.index));
-          }
+          if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
           if (match.type === 'email') {
             parts.push(e('a', { href: `mailto:${match.value}` }, match.value));
           } else if (match.type === 'phone') {
-            const cleanedPhone = match.value.replace(/[-.\s()]/g, '');
-            parts.push(e('a', { href: `tel:${cleanedPhone}` }, match.value));
+            parts.push(e('a', { href: `tel:${match.value.replace(/[-.\s()]/g, '')}` }, match.value));
           } else if (match.type === 'url') {
-            const url = match.value.startsWith('www.') ? `https://${match.value}` : match.value;
-            parts.push(e('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, match.value));
+            const displayText = match.value.length > 30 ? match.value.slice(0, 30) + '…' : match.value;
+            const href = match.value.startsWith('www.') ? `https://${match.value}` : match.value;
+            parts.push(e('a', {
+              href: href,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: {
+                maxWidth: '200px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'inline-block'
+              }
+            }, displayText));
           }
           lastIndex = match.index + match.length;
         });
@@ -342,14 +361,14 @@
             e('span', { id: 'chatbot-title' }, 'Ask LV'),
             e('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '−')
           ]),
-          e('div', { id: 'chatbot-messages' }, 
-            messages.map((msg, i) => 
+          e('div', { id: 'chatbot-messages' },
+            messages.map((msg, i) =>
               e('div', { key: i, className: `message ${msg.sender}` }, [
                 msg.sender === 'bot' && settings.avatar ? e('img', { src: settings.avatar, alt: 'Bot' }) : null,
                 e('span', null, this.renderMessageText(msg.text))
               ])
             ),
-            loading ? e('div', { className: 'message bot' }, '...') : null,
+            loading ? e('div', { className: 'message bot' }, 'Typing...') : null,
             e('div', { ref: this.messagesEndRef })
           ),
           e('div', { id: 'chatbot-input' }, [
@@ -378,18 +397,18 @@
   }
 
   function onScriptError() {
-    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies. Please try again later.</div>';
+    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies.</div>';
   }
 
   scripts.forEach(script => {
-    const scriptTag = document.createElement('script');
-    scriptTag.src = script.src;
-    scriptTag.async = true;
-    scriptTag.onload = () => {
+    const tag = document.createElement('script');
+    tag.src = script.src;
+    tag.async = true;
+    tag.onload = () => {
       script.loaded = true;
       onScriptLoad();
     };
-    scriptTag.onerror = onScriptError;
-    document.head.appendChild(scriptTag);
+    tag.onerror = onScriptError;
+    document.head.appendChild(tag);
   });
 })();
