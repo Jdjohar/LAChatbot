@@ -14,7 +14,7 @@ const widgetRoute = require('./routes/widget');
 const cors = require('cors');
 const { job } = require('./cron');
 const authenticateApiKey = require('./middleware/authenticateApiKey');
-
+const sessionMemory = new Map();
 dotenv.config();
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -68,7 +68,7 @@ const corsOptions = {
     }
   },
   credentials: true,
-  allowedHeaders: ['Authorization', 'Content-Type', 'X-API-Key'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'X-API-Key', 'x-internal-auth', 'x-user-id'],
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   preflightContinue: false
 };
@@ -85,10 +85,12 @@ const UPGRADE_MESSAGE = 'You have reached your plan limit. Upgrade to the paid p
 
 const checkLimits = async (req, res, next) => {
   console.log(req.user, "sddsds");
-  
+
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    console.log(req.user, "user");
+
+    if (!user) return res.status(404).json({ error: 'User not found 3' });
     console.log('checkLimits:', { userId: req.user.id, plan: user.plan, uploadCount: user.uploadCount });
     if (user.plan === 'paid' && user.subscriptionStatus === 'active') {
       return next();
@@ -173,41 +175,57 @@ app.post('/login', async (req, res) => {
   if (!valid) return res.status(400).json({ error: 'Invalid login' });
   const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET);
   res.json(
-    { token, 
-      userid:user._id,
+    {
+      token,
+      userid: user._id,
     });
 });
 
 app.get('/user/uploads', async (req, res) => {
   const { userId, visitorId } = req.query;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
   try {
+    // Use embedding for empty string as query vector to get broad results
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: '', // empty string to get a neutral embedding vector
+    });
+    const queryVector = embeddingResponse.data[0].embedding;
+
     const filter = { userId: userId.toString() };
     if (visitorId) filter.visitorId = visitorId;
+
     const queryResponse = await index.query({
-      vector: Array(1536).fill(0), // Dummy vector for metadata-only query
-      topK: 1000, // Adjust for large datasets
+      vector: queryVector,
+      topK: 1000,
       includeMetadata: true,
-      filter
+      filter,
+      // optionally set a low similarity threshold, e.g.:
+      // minScore: 0.0,
     });
+
     console.log('Uploads query:', {
       userId,
       visitorId,
-      matchCount: queryResponse.matches.length
+      matchCount: queryResponse.matches.length,
     });
-    const uploads = queryResponse.matches.map(match => ({
+
+    const uploads = queryResponse.matches.map((match) => ({
       filename: match.metadata.filename,
       visitorId: match.metadata.visitorId,
       text: match.metadata.text,
       vectorId: match.id,
-      createdAt: match.metadata.createdAt || new Date().toISOString() // Add timestamp if available
+      createdAt: match.metadata.createdAt || new Date().toISOString(),
     }));
+
     res.json({ uploads });
   } catch (err) {
     console.error('Fetch uploads error:', err);
     res.status(500).json({ error: 'Failed to fetch uploads' });
   }
 });
+
 app.get('/user/domains', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('allowedDomains');
@@ -218,70 +236,160 @@ app.get('/user/domains', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch domains' });
   }
 });
-
 app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
-  const { data, filename, visitorId = 'default' } = req.body;
-  console.log('Upload request:', { userId: req.user.id, visitorId, filename, dataLength: data?.length });
-  if (!data || !filename) {
-    return res.status(400).json({ error: 'Data and filename are required' });
-  }
+  console.log("User Req", req.user);
+
+  const { filename, data, visitorId = 'default' } = req.body;
+
+  if (!filename) return res.status(400).json({ error: 'Filename is required' });
+  if (!data) return res.status(400).json({ error: 'Data is required' });
+
   try {
     const user = await User.findById(req.user.id);
+    console.log(user, "User");
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const chunkSize = 5000;
-    const chunks = [];
-    for (let i = 0; i < data.length; i += chunkSize) {
-      chunks.push(data.slice(i, i + chunkSize));
+
+    let vectors = [];
+
+    // Try parse JSON - if fails, treat as plain text
+    let products;
+    try {
+      products = JSON.parse(data);
+    } catch {
+      products = null;
     }
-    const vectors = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i].trim();
-      if (!chunk) continue;
-      console.log(openai,"Check openai API");
-      
-      const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-ada-002',
-        input: chunk,
-      });
-      const embedding = embeddingResponse.data[0].embedding;
-      const vectorId = `${req.user.id}_${visitorId}_${filename}_${i}`;
-      vectors.push({
-        id: vectorId,
-        values: embedding,
-        metadata: {
-          userId: req.user.id.toString(),
-          visitorId,
-          text: chunk,
-          filename,
-          createdAt: new Date().toISOString() // Add timestamp
-        }
-      });
-      console.log('Upserting vector:', {
-        id: vectorId,
-        userId: req.user.id,
-        visitorId,
-        filename,
-        textLength: chunk.length
-      });
+
+    if (products && Array.isArray(products)) {
+      // Structured JSON upload - each product embedded separately
+      for (let i = 0; i < products.length; i++) {
+        const { title, text } = products[i];
+        if (!text?.trim()) continue;
+
+        const embeddingResponse = await openai.embeddings.create({
+          model: 'text-embedding-ada-002',
+          input: text.trim()
+        });
+
+        vectors.push({
+          id: `${req.user.id}_${visitorId}_${filename}_${i}`,
+          values: embeddingResponse.data[0].embedding,
+          metadata: {
+            userId: req.user.id.toString(),
+            visitorId,
+            filename,
+            title,
+            text,
+            createdAt: new Date().toISOString()
+          }
+        });
+      }
+    } else {
+      // Plain text upload - chunk & embed as usual
+      const chunkSize = 5000;
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize).trim();
+        if (!chunk) continue;
+
+        const embeddingResponse = await openai.embeddings.create({
+          model: 'text-embedding-ada-002',
+          input: chunk
+        });
+
+        vectors.push({
+          id: `${req.user.id}_${visitorId}_${filename}_${Math.floor(i / chunkSize)}`,
+          values: embeddingResponse.data[0].embedding,
+          metadata: {
+            userId: req.user.id.toString(),
+            visitorId,
+            filename,
+            text: chunk,
+            createdAt: new Date().toISOString()
+          }
+        });
+      }
     }
+
     if (vectors.length > 0) {
       await index.upsert(vectors, req.user.id.toString());
-      console.log('Vectors upserted:', { vectorCount: vectors.length, userId: req.user.id, visitorId });
-    } else {
-      console.warn('No vectors to upsert for upload:', { userId: req.user.id, visitorId, filename });
     }
-    if (user.plan === 'free') {
-      user.uploadCount += 1;
-    }
+
+    if (user.plan === 'free') user.uploadCount += 1;
     await user.save();
-    res.status(200).json({ message: 'Data embedded and stored successfully' });
+
+    res.status(200).json({ message: 'Data embedded and uploaded successfully.' });
+
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Error processing upload' });
+    console.error('Upload Error:', err);
+    res.status(500).json({ error: 'Failed to upload data' });
   }
 });
+
+
+
+
+// app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
+//   const { data, filename, visitorId = 'default' } = req.body;
+//   console.log('Upload request:', { userId: req.user.id, visitorId, filename, dataLength: data?.length });
+//   if (!data || !filename) {
+//     return res.status(400).json({ error: 'Data and filename are required' });
+//   }
+//   try {
+//     const user = await User.findById(req.user.id);
+//     if (!user) return res.status(404).json({ error: 'User not found' });
+//     const chunkSize = 5000;
+//     const chunks = [];
+//     for (let i = 0; i < data.length; i += chunkSize) {
+//       chunks.push(data.slice(i, i + chunkSize));
+//     }
+//     const vectors = [];
+//     for (let i = 0; i < chunks.length; i++) {
+//       const chunk = chunks[i].trim();
+//       if (!chunk) continue;
+//       console.log(openai,"Check openai API");
+
+//       const embeddingResponse = await openai.embeddings.create({
+//         model: 'text-embedding-ada-002',
+//         input: chunk,
+//       });
+//       const embedding = embeddingResponse.data[0].embedding;
+//       const vectorId = `${req.user.id}_${visitorId}_${filename}_${i}`;
+//       vectors.push({
+//         id: vectorId,
+//         values: embedding,
+//         metadata: {
+//           userId: req.user.id.toString(),
+//           visitorId,
+//           text: chunk,
+//           filename,
+//           createdAt: new Date().toISOString() // Add timestamp
+//         }
+//       });
+//       console.log('Upserting vector:', {
+//         id: vectorId,
+//         userId: req.user.id,
+//         visitorId,
+//         filename,
+//         textLength: chunk.length
+//       });
+//     }
+//     if (vectors.length > 0) {
+//       await index.upsert(vectors, req.user.id.toString());
+//       console.log('Vectors upserted:', { vectorCount: vectors.length, userId: req.user.id, visitorId });
+//     } else {
+//       console.warn('No vectors to upsert for upload:', { userId: req.user.id, visitorId, filename });
+//     }
+//     if (user.plan === 'free') {
+//       user.uploadCount += 1;
+//     }
+//     await user.save();
+//     res.status(200).json({ message: 'Data embedded and stored successfully' });
+//   } catch (err) {
+//     console.error('Upload error:', err);
+//     res.status(500).json({ error: 'Error processing upload' });
+//   }
+// });
 app.get('/vectors', authenticateToken, async (req, res) => {
-  
+
   try {
     const { queryText = null } = req.query;
 
@@ -301,10 +409,10 @@ app.get('/vectors', authenticateToken, async (req, res) => {
       vector,
       topK: 10,
       includeMetadata: true,
-      
+
     },
-  'req.user.id.toString()'
-);
+      'req.user.id.toString()'
+    );
 
     res.json(results.matches);
   } catch (err) {
@@ -315,7 +423,7 @@ app.get('/vectors', authenticateToken, async (req, res) => {
 
 app.delete('/vectors/:id', authenticateToken, async (req, res) => {
   const vectorId = req.params.id;
-  const namespace = req.user.id.toString(); 
+  const namespace = req.user.id.toString();
 
   try {
     // Call Pinecone's delete method with vector ID and namespace
@@ -370,53 +478,226 @@ app.put('/vectors/:id', authenticateToken, async (req, res) => {
     console.error('Error updating vector:', err);
     res.status(500).json({ error: 'Failed to update vector' });
   }
-}); 
-
-
+});
 app.post('/chat', authenticateApiKey, async (req, res) => {
   const { message, visitorId } = req.body;
+
   if (!message || typeof message !== 'string' || !visitorId) {
     return res.status(400).json({ error: 'Invalid message or visitorId' });
   }
+
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    console.log('Chat request:', { userId: req.user.id, plan: user.plan, questionCount: user.questionCount });
+
     if (user.plan === 'free' && user.questionCount >= 20) {
-      console.log('Question limit reached for user:', req.user.id);
       return res.status(403).json({ reply: UPGRADE_MESSAGE });
     }
-    const analytics = await Analytics.findOne({ userId: req.user.id });
-    if (analytics) {
-      analytics.conversationCount += 1;
-      const question = analytics.commonQuestions.find(q => q.question === message);
-      if (question) question.count += 1;
-      else analytics.commonQuestions.push({ question: message, count: 1 });
-      await analytics.save();
-    } else {
-      await Analytics.create({
-        userId: req.user.id,
-        conversationCount: 1,
-        commonQuestions: [{ question: message, count: 1 }]
+
+    // 🧠 1. Load previous chat history for context
+    const recentMessages = await Chat.find({
+      userId: user._id,
+      visitorId
+    }).sort({ createdAt: -1 }).limit(6);
+
+    const chatHistory = recentMessages
+      .reverse()
+      .flatMap(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: chat.reply }
+      ]);
+
+    // 🧠 2. Detect product from current message
+   const productKeywords = {
+  // Happy Heart Capsules
+  "happy heart": "Happy Heart Capsules",
+  "heart": "Happy Heart Capsules",
+  "heart care": "Happy Heart Capsules",
+  "cardio": "Happy Heart Capsules",
+  "blood pressure": "Happy Heart Capsules",
+  "cholesterol": "Happy Heart Capsules",
+  "circulation": "Happy Heart Capsules",
+  "bp": "Happy Heart Capsules",
+  "stress heart": "Happy Heart Capsules",
+
+  // Men Care Capsules
+  "men": "Men Care Capsules",
+  "men's care": "Men Care Capsules",
+  "male": "Men Care Capsules",
+  "testosterone": "Men Care Capsules",
+  "stamina": "Men Care Capsules",
+  "men health": "Men Care Capsules",
+  "recovery": "Men Care Capsules",
+  "performance": "Men Care Capsules",
+  "mens capsule": "Men Care Capsules",
+
+  // Deep Sleep Capsules
+  "sleep": "Deep Sleep Capsules",
+  "deep sleep": "Deep Sleep Capsules",
+  "insomnia": "Deep Sleep Capsules",
+  "relax": "Deep Sleep Capsules",
+  "anxiety": "Deep Sleep Capsules",
+  "calm": "Deep Sleep Capsules",
+  "sleep aid": "Deep Sleep Capsules",
+  "non habit sleep": "Deep Sleep Capsules",
+  "stress sleep": "Deep Sleep Capsules",
+
+  // Women Care Capsules
+  "women": "Women Care Capsules",
+  "ladies": "Women Care Capsules",
+  "female": "Women Care Capsules",
+  "women health": "Women Care Capsules",
+  "hormonal balance": "Women Care Capsules",
+  "pms": "Women Care Capsules",
+  "skin hair": "Women Care Capsules",
+  "metabolism": "Women Care Capsules",
+  "period pain": "Women Care Capsules",
+
+  // Energy Booster Capsules
+  "energy": "Energy Booster Capsules",
+  "booster": "Energy Booster Capsules",
+  "fatigue": "Energy Booster Capsules",
+  "tiredness": "Energy Booster Capsules",
+  "energy pills": "Energy Booster Capsules",
+  "boost stamina": "Energy Booster Capsules",
+  "energy support": "Energy Booster Capsules",
+  "body energy": "Energy Booster Capsules",
+
+  // Men Care & Energy Booster Combo Pack
+  "men combo": "Men Care & Energy Booster Combo Pack",
+  "men energy combo": "Men Care & Energy Booster Combo Pack",
+  "men care energy": "Men Care & Energy Booster Combo Pack",
+  "men full pack": "Men Care & Energy Booster Combo Pack",
+  "male combo": "Men Care & Energy Booster Combo Pack",
+  "both men energy": "Men Care & Energy Booster Combo Pack",
+  "combo for men": "Men Care & Energy Booster Combo Pack",
+  "men together pack": "Men Care & Energy Booster Combo Pack",
+  "men double pack": "Men Care & Energy Booster Combo Pack",
+  "men energy full combo": "Men Care & Energy Booster Combo Pack",
+  "complete men pack": "Men Care & Energy Booster Combo Pack",
+  "men + energy combo": "Men Care & Energy Booster Combo Pack",
+  "all in one men": "Men Care & Energy Booster Combo Pack",
+
+  // Women Care & Energy Booster Combo Pack
+  "women combo": "Women Care & Energy Booster Combo Pack",
+  "women energy combo": "Women Care & Energy Booster Combo Pack",
+  "women care energy": "Women Care & Energy Booster Combo Pack",
+  "women full pack": "Women Care & Energy Booster Combo Pack",
+  "ladies combo": "Women Care & Energy Booster Combo Pack",
+  "both women energy": "Women Care & Energy Booster Combo Pack",
+  "combo for women": "Women Care & Energy Booster Combo Pack",
+  "women together pack": "Women Care & Energy Booster Combo Pack",
+  "female combo pack": "Women Care & Energy Booster Combo Pack",
+  "women energy full combo": "Women Care & Energy Booster Combo Pack",
+  "complete women pack": "Women Care & Energy Booster Combo Pack",
+  "women + energy combo": "Women Care & Energy Booster Combo Pack",
+  "all in one women": "Women Care & Energy Booster Combo Pack"
+};
+
+    let lastProduct = sessionMemory.get(visitorId) || null;
+    for (const key in productKeywords) {
+      if (message.toLowerCase().includes(key)) {
+        lastProduct = productKeywords[key];
+        sessionMemory.set(visitorId, lastProduct);
+        break;
+      }
+    }
+
+    // 🔎 3. Embed the current question
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: message.trim(),
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
+    // 📡 4. Query Pinecone with userId and visitorId filter
+    let queryResponse = await index.query({
+      vector: queryEmbedding,
+      topK: 5,
+      includeMetadata: true,
+      filter: { userId: user._id.toString(), visitorId }
+    });
+
+    // fallback: query by userId only
+    if (queryResponse.matches.length === 0) {
+      queryResponse = await index.query({
+        vector: queryEmbedding,
+        topK: 5,
+        includeMetadata: true,
+        filter: { userId: user._id.toString() }
       });
     }
-    const reply = await processMessage(message, user, visitorId);
-    if (reply === UPGRADE_MESSAGE) {
-      console.log('Returning upgrade message for user:', req.user.id);
-      return res.status(403).json({ reply });
-    }
-    const chat = new Chat({ userId: user._id, visitorId, message, reply });
-    await chat.save();
+
+    // 🧹 5. Filter context by last mentioned product
+    const filteredChunks = queryResponse.matches
+      .filter(m =>
+        lastProduct &&
+        m.metadata.text.toLowerCase().includes(lastProduct.toLowerCase())
+      )
+      .map(m => m.metadata.text);
+
+    const context = (filteredChunks.length > 0
+      ? filteredChunks
+      : queryResponse.matches.map(m => m.metadata.text)
+    ).join('\n');
+
+    // 📜 6. Strong system prompt
+    const systemPrompt = `
+You are a helpful assistant for La Vedaa Healthcure products.
+
+The customer is currently interested in: **${lastProduct || 'a specific product'}**
+
+ONLY answer about this product. If the user says "benefits", "description", "price", or "how to use", assume they mean **${lastProduct || 'that product'}**.
+
+⚠️ NEVER list all products. NEVER include other products unless the user clearly mentions them.
+
+Be concise, helpful, and on-topic.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory,
+      { role: 'user', content: `Context: ${context}\n\nQuestion: ${message}` }
+    ];
+
+    // 🧠 7. Get GPT response
+    const completionResponse = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages
+    });
+
+    const reply = completionResponse.choices[0].message.content;
+
+    // 💾 8. Save chat message
+    await Chat.create({ userId: user._id, visitorId, message, reply });
+
     if (user.plan === 'free') {
       user.questionCount += 1;
+      await user.save();
     }
-    await user.save();
+
     res.json({ reply });
+
   } catch (err) {
     console.error('Chat error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+app.post('/chat/reset-session', (req, res) => {
+  const { visitorId } = req.body;
+
+  if (!visitorId) {
+    return res.status(400).json({ error: 'visitorId is required' });
+  }
+
+  // Clear memory for that visitor
+  sessionMemory.delete(visitorId);
+
+  res.json({ message: `Session memory reset for visitor ${visitorId}` });
+});
+
+
+
 
 app.get('/user/plan', authenticateApiKey, async (req, res) => {
   try {
@@ -503,6 +784,8 @@ async function processMessage(message, user, visitorId = 'default') {
       input: message.trim(),
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
+    console.log("Querying Pinecone with embedding of length", queryEmbedding.length);
+    
     let queryResponse = await index.query({
       vector: queryEmbedding,
       topK: 5,
@@ -548,7 +831,7 @@ async function processMessage(message, user, visitorId = 'default') {
         }))
       });
     }
-    const context = queryResponse.matches.map(match => match.metadata.text).join('\n');
+const context = (filteredChunks.length > 0 ? filteredChunks : queryResponse.matches.map(m => m.metadata.text)).join('\n');
     console.log('Context length:', context.length, 'Context sample:', context.slice(0, 200));
     if (!context) {
       console.warn('No context retrieved from Pinecone for query:', message);
