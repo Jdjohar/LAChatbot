@@ -1,3 +1,4 @@
+// chatbot-widget.js
 (function () {
   const widgetDiv = document.createElement('div');
   widgetDiv.id = 'chatbot-widget';
@@ -94,6 +95,8 @@
         overflow-y: auto;
         padding: 10px;
         scrollbar-width: thin;
+        display: flex;
+        flex-direction: column;
       }
       #chatbot-input {
         display: flex;
@@ -126,16 +129,14 @@
         word-break: break-word;
       }
       .user {
-        background: #000000;
+        background: #000;
         align-self: flex-end;
-        color:#fff;
-        margin-left: auto;
+        color: #fff;
       }
       .bot {
         background: #f2f2f2;
-        color:#000000;
+        color: #000;
         align-self: flex-start;
-        margin-right: auto;
       }
       .message strong {
         font-weight: bold;
@@ -162,6 +163,7 @@
     }
 
     const e = window.React.createElement;
+
     class ChatbotWidget extends window.React.Component {
       constructor(props) {
         super(props);
@@ -185,10 +187,6 @@
           const settings = await res.json();
           this.setState({ settings }, () => {
             applyStyles(settings, this.state.isMinimized);
-            if (!this.state.isMinimized) {
-              this.addWelcomeMessage();
-              this.fetchChats();
-            }
           });
         } catch {
           applyStyles(defaultSettings, this.state.isMinimized);
@@ -207,14 +205,13 @@
             headers: { 'X-API-Key': apiKey }
           });
           const chats = await res.json();
+          const history = chats.flatMap(c => [
+            { sender: 'user', text: c.message },
+            ...(c.reply ? [{ sender: 'bot', text: c.reply }] : [])
+          ]);
+
           this.setState(prev => ({
-            messages: [
-              { sender: 'bot', text: prev.settings.welcomeMessage },
-              ...chats.flatMap(c => [
-                { sender: 'user', text: c.message },
-                ...(c.reply ? [{ sender: 'bot', text: c.reply }] : [])
-              ])
-            ]
+            messages: [{ sender: 'bot', text: prev.settings.welcomeMessage }, ...history]
           }), this.scrollToBottom);
         } catch {
           this.setState(prev => ({
@@ -226,10 +223,11 @@
       sendMessage = async () => {
         const { input, messages } = this.state;
         if (!input.trim()) return;
+
         this.setState({
           input: '',
           loading: true,
-          messages: [...messages, { sender: 'user', text: input }]
+          messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: '...' }]  // new line for typing dots
         }, this.scrollToBottom);
 
         try {
@@ -244,15 +242,24 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'API error');
 
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: data.reply }],
-            loading: false
-          }), this.scrollToBottom);
-        } catch (err) {
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: 'Server error. Please try again later.' }],
-            loading: false
-          }), this.scrollToBottom);
+          // Replace typing dots with actual reply
+          this.setState(prev => {
+            const updated = [...prev.messages];
+            updated.pop(); // remove the '...'
+            return {
+              messages: [...updated, { sender: 'bot', text: data.reply }],
+              loading: false
+            };
+          }, this.scrollToBottom);
+        } catch {
+          this.setState(prev => {
+            const updated = [...prev.messages];
+            updated.pop(); // remove the '...'
+            return {
+              messages: [...updated, { sender: 'bot', text: 'Server error. Please try again later.' }],
+              loading: false
+            };
+          }, this.scrollToBottom);
         }
       };
 
@@ -279,7 +286,6 @@
 
       renderMessageText(text) {
         const e = window.React.createElement;
-        const parts = [];
         const markdownLinkRegex = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g;
         const boldRegex = /\*\*(.*?)\*\*/g;
 
@@ -293,29 +299,32 @@
       render() {
         const { messages, input, loading, isMinimized, settings } = this.state;
         if (isMinimized) {
-          return e('div', { onClick: this.toggleMinimize }, [
-            e('img', {
+          return window.React.createElement('div', { onClick: this.toggleMinimize }, [
+            window.React.createElement('img', {
               id: 'chatbot-minimized-img',
               src: settings.avatar || 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
               alt: 'Chatbot'
             })
           ]);
         }
-        return e('div', null, [
-          e('div', { id: 'chatbot-header' }, [
-            settings.avatar ? e('img', { id: 'chatbot-avatar', src: settings.avatar }) : null,
-            e('span', { id: 'chatbot-title' }, 'Ask LV'),
-            e('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '−')
+
+        return window.React.createElement('div', null, [
+          window.React.createElement('div', { id: 'chatbot-header' }, [
+            settings.avatar ? window.React.createElement('img', { id: 'chatbot-avatar', src: settings.avatar }) : null,
+            window.React.createElement('span', { id: 'chatbot-title' }, 'Ask LV'),
+            window.React.createElement('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '×')
           ]),
-          e('div', { id: 'chatbot-messages' }, [
+          window.React.createElement('div', { id: 'chatbot-messages' }, [
             ...messages.map((msg, i) =>
-              e('div', { key: i, className: `message ${msg.sender}` }, this.renderMessageText(msg.text))
+              window.React.createElement('div', {
+                key: i,
+                className: `message ${msg.sender}`
+              }, this.renderMessageText(msg.text))
             ),
-            loading ? e('div', { className: 'message bot' }, '...') : null,
-            e('div', { ref: this.messagesEndRef })
+            window.React.createElement('div', { ref: this.messagesEndRef })
           ]),
-          e('div', { id: 'chatbot-input' }, [
-            e('input', {
+          window.React.createElement('div', { id: 'chatbot-input' }, [
+            window.React.createElement('input', {
               type: 'text',
               value: input,
               onChange: e => this.setState({ input: e.target.value }),
@@ -323,8 +332,11 @@
               placeholder: 'Type your message...',
               disabled: loading
             }),
-            e('button', { onClick: this.sendMessage, disabled: loading }, 'Send'),
-            e('button', { onClick: this.resetSession, style: { backgroundColor: '#ef4444' } }, 'Reset Chat')
+            window.React.createElement('button', { onClick: this.sendMessage, disabled: loading }, 'Send'),
+            window.React.createElement('button', {
+              onClick: this.resetSession,
+              style: { backgroundColor: '#ef4444' }
+            }, 'Reset Chat')
           ])
         ]);
       }
