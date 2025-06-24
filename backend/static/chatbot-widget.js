@@ -36,10 +36,10 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 99999999999;
+          z-index: 999999999;
         ` : `
           width: 320px;
-          height: 460px;
+          height: 520px;
           background: #fff;
           border-radius: 12px;
           box-shadow: 0 6px 12px rgba(0,0,0,0.2);
@@ -99,6 +99,8 @@
         display: flex;
         padding: 10px;
         border-top: 1px solid #ddd;
+        flex-direction: column;
+        gap: 5px;
       }
       #chatbot-input input {
         flex: 1;
@@ -109,7 +111,6 @@
       }
       #chatbot-input button {
         padding: 8px 12px;
-        margin-left: 5px;
         background: ${settings.theme};
         color: white;
         border: none;
@@ -134,19 +135,12 @@
         align-self: flex-start;
         margin-right: auto;
       }
-      .bot img {
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        margin-right: 5px;
+      .message strong {
+        font-weight: bold;
       }
       .message a {
         color: ${settings.theme};
         text-decoration: underline;
-        word-break: break-all;
-      }
-      .message a:hover {
-        text-decoration: none;
       }
     `;
     document.head.appendChild(style);
@@ -158,13 +152,6 @@
   ];
 
   let scriptsLoaded = 0;
-
-  function loadBeepSound() {
-    const audio = new Audio('https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg');
-    return audio;
-  }
-
-  const beep = loadBeepSound();
 
   function renderWidget() {
     if (!window.React || !window.ReactDOM || !window.React.Component) {
@@ -193,7 +180,6 @@
       fetchSettings = async () => {
         try {
           const res = await fetch(`${apiUrl}/widget/settings/${userId}`);
-          if (!res.ok) throw new Error('Failed to fetch settings');
           const settings = await res.json();
           this.setState({ settings }, () => {
             applyStyles(settings, this.state.isMinimized);
@@ -202,8 +188,7 @@
               this.fetchChats();
             }
           });
-        } catch (err) {
-          console.error('Settings fetch error:', err);
+        } catch {
           applyStyles(defaultSettings, this.state.isMinimized);
         }
       };
@@ -229,8 +214,7 @@
               ])
             ]
           }), this.scrollToBottom);
-        } catch (err) {
-          console.error('Chat history error:', err);
+        } catch {
           this.setState(prev => ({
             messages: [...prev.messages, { sender: 'bot', text: 'Failed to load chat history.' }]
           }));
@@ -261,12 +245,8 @@
           this.setState(prev => ({
             messages: [...prev.messages, { sender: 'bot', text: data.reply }],
             loading: false
-          }), () => {
-            beep.play();
-            this.scrollToBottom();
-          });
+          }), this.scrollToBottom);
         } catch (err) {
-          console.error('Send message error:', err);
           this.setState(prev => ({
             messages: [...prev.messages, { sender: 'bot', text: 'Server error. Please try again later.' }],
             loading: false
@@ -274,16 +254,21 @@
         }
       };
 
-      toggleMinimize = () => {
-        this.setState(prev => {
-          const minimized = !prev.isMinimized;
-          applyStyles(prev.settings, minimized);
-          if (!minimized && prev.messages.length === 0) {
-            this.addWelcomeMessage();
-            this.fetchChats();
-          }
-          return { isMinimized: minimized };
-        });
+      resetSession = async () => {
+        try {
+          await fetch(`${apiUrl}/chat/reset-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visitorId })
+          });
+          this.setState({
+            messages: [{ sender: 'bot', text: this.state.settings.welcomeMessage }],
+            input: '',
+            loading: false
+          }, this.scrollToBottom);
+        } catch (err) {
+          console.error('Reset failed:', err);
+        }
       };
 
       scrollToBottom = () => {
@@ -291,39 +276,16 @@
       };
 
       renderMessageText(text) {
-        const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
-        const phoneRegex = /(\+?\d{1,4}[-.\s]?\(?\d{1,3}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4})/g;
-        const urlRegex = /\b(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)\b/g;
-
         const e = window.React.createElement;
-        let parts = [], lastIndex = 0, matches = [];
+        const parts = [];
+        const markdownLinkRegex = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g;
+        const boldRegex = /\*\*(.*?)\*\*/g;
 
-        const extractMatches = (regex, type) => {
-          let match;
-          while ((match = regex.exec(text)) !== null) {
-            matches.push({ type, value: match[0], index: match.index, length: match[0].length });
-          }
-        };
+        let formatted = text
+          .replace(markdownLinkRegex, '<a href="$2" target="_blank">$1</a>')
+          .replace(boldRegex, '<strong>$1</strong>');
 
-        extractMatches(emailRegex, 'email');
-        extractMatches(phoneRegex, 'phone');
-        extractMatches(urlRegex, 'url');
-
-        matches.sort((a, b) => a.index - b.index);
-
-        matches.forEach(match => {
-          if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-          let el;
-          if (match.type === 'email') el = e('a', { href: `mailto:${match.value}` }, match.value);
-          else if (match.type === 'phone') el = e('a', { href: `tel:${match.value.replace(/[-.\s()]/g, '')}` }, match.value);
-          else if (match.type === 'url') el = e('a', { href: match.value.startsWith('http') ? match.value : `https://${match.value}`, target: '_blank' }, match.value);
-          parts.push(el);
-          lastIndex = match.index + match.length;
-        });
-
-        if (lastIndex < text.length) parts.push(text.slice(lastIndex));
-
-        return parts.length ? parts : text;
+        return e('span', { dangerouslySetInnerHTML: { __html: formatted } });
       }
 
       render() {
@@ -359,10 +321,23 @@
               placeholder: 'Type your message...',
               disabled: loading
             }),
-            e('button', { onClick: this.sendMessage, disabled: loading }, 'Send')
+            e('button', { onClick: this.sendMessage, disabled: loading }, 'Send'),
+            e('button', { onClick: this.resetSession, style: { backgroundColor: '#ef4444' } }, 'Reset Chat')
           ])
         ]);
       }
+
+      toggleMinimize = () => {
+        this.setState(prev => {
+          const minimized = !prev.isMinimized;
+          applyStyles(prev.settings, minimized);
+          if (!minimized && prev.messages.length === 0) {
+            this.addWelcomeMessage();
+            this.fetchChats();
+          }
+          return { isMinimized: minimized };
+        });
+      };
     }
 
     window.ReactDOM.render(e(ChatbotWidget), widgetDiv);
@@ -377,7 +352,7 @@
 
   function onScriptError(e) {
     console.error('Failed to load script:', e.target.src);
-    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies. Please try again later.</div>';
+    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot. Try again later.</div>';
   }
 
   scripts.forEach(script => {
