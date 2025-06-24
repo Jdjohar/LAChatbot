@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { marked } from "marked";
 
 /**
  * ChatbotApp.jsx – A single‑page React UI for your Node/Express chatbot backend.
@@ -123,6 +124,15 @@ function AuthForm({ onSuccess }) {
     );
 }
 
+
+
+
+/********************* RESET CHAT ************************/
+
+
+
+
+
 /********************* CHAT ************************/
 function ChatUI({ token, onLogout }) {
     const [messages, setMessages] = useState([]); // { sender: "user"|"bot", text }
@@ -155,36 +165,38 @@ setMessages(
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    async function sendMessage(e) {
-        e.preventDefault();
-        if (!input.trim() || loading) return;
+ async function sendMessage(e) {
+  e.preventDefault();
+  if (!input.trim() || loading) return;
 
-        const userText = input.trim();
-        setMessages((m) => [...m, { sender: "user", text: userText }]);
-        setInput("");
-        setLoading(true);
-        console.log("token:", token);
-        console.log("userText:", userText);
-         const BASE_URL = "https://lachatbot.onrender.com";
-        try {
-            const res = await fetch(`${BASE_URL}/chat`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ message: userText }),
-            });
-            console.log(res,"res");
-            const data = await res.json();
-            console.log(data,"data");
-            
-            setMessages((m) => [...m, { sender: "bot", text: data.reply || data.error }]);
-        } catch (err) {
-            setMessages((m) => [...m, { sender: "bot", text: "Error contacting server." }]);
-        }
-        setLoading(false);
-    }
+  const userText = input.trim();
+  setMessages((m) => [...m, { sender: "user", text: userText }]);
+  setInput("");
+  setLoading(true);
+
+  try {
+    const BASE_URL = "https://lachatbot.onrender.com";
+    const res = await fetch(`${BASE_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // 🔐 Internal auth bypass header
+        "x-internal-auth": "true",
+      },
+      body: JSON.stringify({
+        message: userText,
+        visitorId: localStorage.getItem("userid") || "admin-ui", // fallback visitorId
+      }),
+    });
+
+    const data = await res.json();
+    setMessages((m) => [...m, { sender: "bot", text: data.reply || data.error }]);
+  } catch (err) {
+    setMessages((m) => [...m, { sender: "bot", text: "Error contacting server." }]);
+  }
+
+  setLoading(false);
+}
 
     return (
         <div className="flex flex-col h-[32rem]">
@@ -197,7 +209,7 @@ setMessages(
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-gray-50">
+            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 bg-gray-50 chat-messages">
                 {messages.map((msg, idx) => (
                     <div
                         key={idx}
@@ -206,7 +218,7 @@ setMessages(
                             : "mr-auto bg-white"
                             }`}
                     >
-                        {msg.text}
+                       <p dangerouslySetInnerHTML={{ __html: marked.parse(msg.text) }} />
                     </div>
                 ))}
                 {loading && (
