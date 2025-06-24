@@ -14,353 +14,208 @@
     localStorage.setItem('chatbot_visitor_id', visitorId);
   }
 
-  const defaultSettings = {
-    theme: '#1e3a8a',
-    position: 'bottom-right',
-    avatar: '',
-    welcomeMessage: 'Hello! How can I assist you today?'
-  };
+  const style = document.createElement('style');
+  style.textContent = `
+    * {
+      user-select: none !important;
+    }
+    #chatbot-widget {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      z-index: 100000;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .chat-button {
+      background: #1e3a8a;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      cursor: pointer;
+      font-size: 24px;
+    }
+    .chat-window {
+      width: 360px;
+      height: 540px;
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chat-header {
+      background: #1e3a8a;
+      color: #fff;
+      padding: 16px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .chat-body {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      background: #f9fafb;
+    }
+    .chat-footer {
+      padding: 12px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      gap: 8px;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+    }
+    .chat-send {
+      background: #1e3a8a;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0 16px;
+      cursor: pointer;
+    }
+    .chat-message {
+      max-width: 80%;
+      margin-bottom: 10px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      clear: both;
+      word-wrap: break-word;
+    }
+    .bot-message {
+      background: #e5e7eb;
+      float: left;
+    }
+    .user-message {
+      background: #1e3a8a;
+      color: #fff;
+      float: right;
+    }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid #1e3a8a;
+      border-radius: 10px;
+      color: #1e3a8a;
+      padding: 6px 12px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+  `;
+  document.head.appendChild(style);
 
-  function applyStyles(settings, isMinimized) {
-    const style = document.createElement('style');
-    style.textContent = `
-      #chatbot-widget {
-        position: fixed;
-        ${settings.position === 'bottom-right' ? 'bottom: 100px; right: 36px;' : 'bottom: 20px; left: 20px;'}
-        ${isMinimized ? `
-          width: 60px;
-          height: 60px;
-          background: ${settings.theme};
-          border-radius: 50%;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 999999999;
-        ` : `
-          width: 320px;
-          height: 520px;
-          background: #fff;
-          border-radius: 12px;
-          box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-          z-index: 1000;
-          font-family: "Segoe UI", sans-serif;
-          display: flex;
-          flex-direction: column;
-          animation: fadeIn 0.3s ease;
-        `}
-      }
-      @keyframes fadeIn {
-        from { opacity: 0; transform: scale(0.95); }
-        to { opacity: 1; transform: scale(1); }
-      }
-      #chatbot-minimized-img {
-        width: 55px;
-        height: 55px;
-        object-fit: cover;
-        border-radius: 50%;
-      }
-      #chatbot-header {
-        background: ${settings.theme};
-        color: white;
-        padding: 10px;
-        border-radius: 12px 12px 0 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      #chatbot-avatar {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        object-fit: cover;
-        margin-right: 10px;
-      }
-      #chatbot-title {
-        flex: 1;
-        text-align: center;
-        font-weight: 600;
-      }
-      #chatbot-minimize-btn {
-        background: none;
-        border: none;
-        color: white;
-        font-size: 18px;
-        cursor: pointer;
-      }
-      #chatbot-messages {
-        flex: 1;
-        height: 320px;
-        overflow-y: auto;
-        padding: 10px;
-        scrollbar-width: thin;
-      }
-      #chatbot-input {
-        display: flex;
-        padding: 10px;
-        border-top: 1px solid #ddd;
-        flex-direction: column;
-        gap: 5px;
-      }
-      #chatbot-input input {
-        flex: 1;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-size: 14px;
-      }
-      #chatbot-input button {
-        padding: 8px 12px;
-        background: ${settings.theme};
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-      }
-      .message {
-        margin: 5px 0;
-        padding: 8px 10px;
-        border-radius: 8px;
-        display: inline-block;
-        max-width: 85%;
-        word-break: break-word;
-      }
-      .user {
-        background: #dbeafe;
-        align-self: flex-end;
-        margin-left: auto;
-      }
-      .bot {
-        background: #f3f4f6;
-        align-self: flex-start;
-        margin-right: auto;
-      }
-      .message strong {
-        font-weight: bold;
-      }
-      .message a {
-        color: ${settings.theme};
-        text-decoration: underline;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  const scripts = [
-    { src: 'https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js' },
-    { src: 'https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js' }
-  ];
-
-  let scriptsLoaded = 0;
-
-  function renderWidget() {
-    if (!window.React || !window.ReactDOM || !window.React.Component) {
-      widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies.</div>';
-      return;
+  const e = window.React.createElement;
+  const ChatbotWidget = class extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = {
+        open: false,
+        messages: [],
+        input: '',
+        loading: false
+      };
+      this.ref = React.createRef();
     }
 
-    const e = window.React.createElement;
-    class ChatbotWidget extends window.React.Component {
-      constructor(props) {
-        super(props);
-        this.state = {
-          messages: [],
-          input: '',
-          loading: false,
-          isMinimized: true,
-          settings: defaultSettings
-        };
-        this.messagesEndRef = window.React.createRef();
+    componentDidMount() {
+      this.fetchWelcome();
+    }
+
+    fetchWelcome = async () => {
+      try {
+        const res = await fetch(`${apiUrl}/widget/settings/${userId}`);
+        const data = await res.json();
+        this.setState({ messages: [{ sender: 'bot', text: data.welcomeMessage }] });
+      } catch {
+        this.setState({ messages: [{ sender: 'bot', text: 'Welcome! How can I help?' }] });
       }
+    };
 
-      componentDidMount() {
-        this.fetchSettings();
-      }
+    toggleWidget = () => {
+      this.setState(prev => ({ open: !prev.open }));
+    };
 
-      fetchSettings = async () => {
-        try {
-          const res = await fetch(`${apiUrl}/widget/settings/${userId}`);
-          const settings = await res.json();
-          this.setState({ settings }, () => {
-            applyStyles(settings, this.state.isMinimized);
-            if (!this.state.isMinimized) {
-              this.addWelcomeMessage();
-              this.fetchChats();
-            }
-          });
-        } catch {
-          applyStyles(defaultSettings, this.state.isMinimized);
-        }
-      };
+    sendMessage = async () => {
+      const { input, messages } = this.state;
+      if (!input.trim()) return;
+      this.setState({ input: '', messages: [...messages, { sender: 'user', text: input }], loading: true });
 
-      addWelcomeMessage = () => {
+      try {
+        const res = await fetch(`${apiUrl}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey
+          },
+          body: JSON.stringify({ message: input, visitorId })
+        });
+        const data = await res.json();
         this.setState(prev => ({
-          messages: [{ sender: 'bot', text: prev.settings.welcomeMessage }]
-        }), this.scrollToBottom);
-      };
-
-      fetchChats = async () => {
-        try {
-          const res = await fetch(`${apiUrl}/chats?visitorId=${visitorId}`, {
-            headers: { 'X-API-Key': apiKey }
-          });
-          const chats = await res.json();
-          this.setState(prev => ({
-            messages: [
-              { sender: 'bot', text: prev.settings.welcomeMessage },
-              ...chats.flatMap(c => [
-                { sender: 'user', text: c.message },
-                ...(c.reply ? [{ sender: 'bot', text: c.reply }] : [])
-              ])
-            ]
-          }), this.scrollToBottom);
-        } catch {
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: 'Failed to load chat history.' }]
-          }));
-        }
-      };
-
-      sendMessage = async () => {
-        const { input, messages } = this.state;
-        if (!input.trim()) return;
-        this.setState({
-          input: '',
-          loading: true,
-          messages: [...messages, { sender: 'user', text: input }]
-        }, this.scrollToBottom);
-
-        try {
-          const res = await fetch(`${apiUrl}/chat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Key': apiKey
-            },
-            body: JSON.stringify({ message: input, visitorId })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'API error');
-
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: data.reply }],
-            loading: false
-          }), this.scrollToBottom);
-        } catch (err) {
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: 'Server error. Please try again later.' }],
-            loading: false
-          }), this.scrollToBottom);
-        }
-      };
-
-      resetSession = async () => {
-        try {
-          await fetch(`${apiUrl}/chat/reset-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ visitorId })
-          });
-          this.setState({
-            messages: [{ sender: 'bot', text: this.state.settings.welcomeMessage }],
-            input: '',
-            loading: false
-          }, this.scrollToBottom);
-        } catch (err) {
-          console.error('Reset failed:', err);
-        }
-      };
-
-      scrollToBottom = () => {
-        this.messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      };
-
-      renderMessageText(text) {
-        const e = window.React.createElement;
-        const parts = [];
-        const markdownLinkRegex = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g;
-        const boldRegex = /\*\*(.*?)\*\*/g;
-
-        let formatted = text
-          .replace(markdownLinkRegex, '<a href="$2" target="_blank">$1</a>')
-          .replace(boldRegex, '<strong>$1</strong>');
-
-        return e('span', { dangerouslySetInnerHTML: { __html: formatted } });
+          messages: [...prev.messages, { sender: 'bot', text: data.reply }],
+          loading: false
+        }));
+      } catch {
+        this.setState(prev => ({
+          messages: [...prev.messages, { sender: 'bot', text: 'Something went wrong.' }],
+          loading: false
+        }));
       }
+    };
 
-      render() {
-        const { messages, input, loading, isMinimized, settings } = this.state;
-        if (isMinimized) {
-          return e('div', { onClick: this.toggleMinimize }, [
-            e('img', {
-              id: 'chatbot-minimized-img',
-              src: settings.avatar || 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
-              alt: 'Chatbot'
-            })
-          ]);
-        }
-        return e('div', null, [
-          e('div', { id: 'chatbot-header' }, [
-            settings.avatar ? e('img', { id: 'chatbot-avatar', src: settings.avatar }) : null,
-            e('span', { id: 'chatbot-title' }, 'Ask LV'),
-            e('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '−')
+    resetSession = async () => {
+      await fetch(`${apiUrl}/chat/reset-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visitorId })
+      });
+      this.fetchWelcome();
+    };
+
+    render() {
+      const { open, messages, input, loading } = this.state;
+      return e('div', null, [
+        !open && e('button', { className: 'chat-button', onClick: this.toggleWidget }, '💬'),
+        open && e('div', { className: 'chat-window' }, [
+          e('div', { className: 'chat-header' }, [
+            e('span', null, 'Ask LV'),
+            e('button', { onClick: this.toggleWidget, style: { background: 'none', border: 'none', color: '#fff', fontSize: '16px' } }, '×')
           ]),
-          e('div', { id: 'chatbot-messages' }, [
-            ...messages.map((msg, i) =>
-              e('div', { key: i, className: `message ${msg.sender}` }, this.renderMessageText(msg.text))
-            ),
-            loading ? e('div', { className: 'message bot' }, '...') : null,
-            e('div', { ref: this.messagesEndRef })
-          ]),
-          e('div', { id: 'chatbot-input' }, [
+          e('div', { className: 'chat-body', ref: this.ref },
+            messages.map((m, i) => e('div', {
+              key: i,
+              className: `chat-message ${m.sender === 'user' ? 'user-message' : 'bot-message'}`
+            }, m.text))
+          ),
+          e('div', { className: 'chat-footer' }, [
             e('input', {
-              type: 'text',
+              className: 'chat-input',
               value: input,
               onChange: e => this.setState({ input: e.target.value }),
-              onKeyPress: e => e.key === 'Enter' && this.sendMessage(),
-              placeholder: 'Type your message...',
-              disabled: loading
+              onKeyDown: e => e.key === 'Enter' && this.sendMessage(),
+              placeholder: 'Type your message...'
             }),
-            e('button', { onClick: this.sendMessage, disabled: loading }, 'Send'),
-            e('button', { onClick: this.resetSession, style: { backgroundColor: '#ef4444' } }, 'Reset Chat')
+            e('button', { className: 'chat-send', onClick: this.sendMessage, disabled: loading }, 'Send'),
+            e('button', { className: 'reset-btn', onClick: this.resetSession }, 'Reset Session')
           ])
-        ]);
-      }
-
-      toggleMinimize = () => {
-        this.setState(prev => {
-          const minimized = !prev.isMinimized;
-          applyStyles(prev.settings, minimized);
-          if (!minimized && prev.messages.length === 0) {
-            this.addWelcomeMessage();
-            this.fetchChats();
-          }
-          return { isMinimized: minimized };
-        });
-      };
+        ])
+      ]);
     }
+  };
 
-    window.ReactDOM.render(e(ChatbotWidget), widgetDiv);
-  }
-
-  function onScriptLoad() {
-    scriptsLoaded++;
-    if (scriptsLoaded === scripts.length) {
-      renderWidget();
-    }
-  }
-
-  function onScriptError(e) {
-    console.error('Failed to load script:', e.target.src);
-    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot. Try again later.</div>';
-  }
-
-  scripts.forEach(script => {
-    const s = document.createElement('script');
-    s.src = script.src;
-    s.async = true;
-    s.onload = onScriptLoad;
-    s.onerror = onScriptError;
-    document.head.appendChild(s);
-  });
+  const s1 = document.createElement('script');
+  s1.src = 'https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js';
+  const s2 = document.createElement('script');
+  s2.src = 'https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js';
+  s2.onload = () => {
+    ReactDOM.render(React.createElement(ChatbotWidget), widgetDiv);
+  };
+  document.head.appendChild(s1);
+  document.head.appendChild(s2);
 })();
