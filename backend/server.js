@@ -9,10 +9,13 @@ const dotenv = require('dotenv');
 const bcrypt = require('bcrypt');
 const User = require('./models/User');
 const Chat = require('./models/Chat');
+const Session = require('./models/Session');
 const Analytics = require('./models/Analytics');
 const widgetRoute = require('./routes/widget');
 const cors = require('cors');
 const { job } = require('./cron');
+const winston = require('winston');
+
 const authenticateApiKey = require('./middleware/authenticateApiKey');
 const sessionMemory = new Map();
 dotenv.config();
@@ -28,18 +31,29 @@ const normalizeDomain = (domain) => {
     .replace(/\/$/, '');
 };
 
-const STATIC_DOMAINS = ['https://la-chatbot.vercel.app'];
+// Initialize logging
+const logger = winston.createLogger({
+  transports: [new winston.transports.File({ filename: 'chatbot.log' })],
+});
+
+
+const productKeywords = require('./productKeywords');
+const STATIC_DOMAINS = ['https://la-chatbot.vercel.app', 'http://127.0.0.1:5500'];
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+const index = pinecone.Index(process.env.PINECONE_INDEX);
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 const corsOptions = {
   origin: async function (origin, callback, req) {
     try {
-      console.log('CORS check:', {
-        origin,
-        url: req ? req.url : 'undefined',
-        method: req ? req.method : 'undefined',
-        headers: req ? req.headers : 'undefined',
-        ip: req ? req.ip : 'undefined'
-      });
+      // console.log('CORS check:', {
+      //   origin,
+      //   url: req ? req.url : 'undefined',
+      //   method: req ? req.method : 'undefined',
+      //   headers: req ? req.headers : 'undefined',
+      //   ip: req ? req.ip : 'undefined'
+      // });
       if (!origin) {
         console.log('No origin, allowing request for URL:', req ? req.url : 'undefined');
         if ((req && req.url && req.url.startsWith('/static')) || (req && req.method === 'OPTIONS')) {
@@ -81,6 +95,61 @@ mongoose.connect(process.env.MONGODB_URI, {
 console.log('MongoDB connected');
 
 
+// Session management functions
+async function getSession(visitorId, userId) {
+  let session = await Session.findOne({ visitorId, userId }).lean(); // this returns plain object
+  if (!session) {
+    session = await Session.create({ visitorId, userId });
+    return session.toObject(); // make sure it's plain object if lean() not used above
+  }
+  return session;
+}
+
+async function updateSession(visitorId, userId, data) {
+    console.log("🔄 updateSession called with:", { visitorId, userId, data });
+
+  await Session.findOneAndUpdate(
+    { visitorId, userId },
+    { $set: { ...data, updatedAt: new Date() } },
+    { upsert: true, new: true }
+  );
+}
+
+// Intent detection
+const intentKeywords = {
+  benefits: ['benefits', 'advantages', 'helps with', 'what does it do', 'head pain', 'headache'],
+  ingredients: ['ingredients', 'made of', 'contains', 'what’s in it'],
+  pricing: ['price', 'cost', 'how much', 'pricing'],
+  usage: ['how to use', 'dosage', 'instructions', 'how to take', 'how it work', 'how does it work', 'how it works', 'its how work'],
+  ideal_for: ['who is it for', 'suitable for', 'recommended for'],
+  link: ['buy', 'purchase', 'where to get', 'link'],
+};
+
+function detectIntent(message) {
+  const lowerMessage = message.toLowerCase();
+  for (const [intent, keywords] of Object.entries(intentKeywords)) {
+    if (keywords.some(keyword => lowerMessage.includes(keyword))) {
+      return intent;
+    }
+  }
+  return null;
+}
+
+function findProductFromMessage(message, lastProduct) {
+  const lowerMessage = message.toLowerCase();
+  if (lastProduct && lowerMessage.includes(lastProduct.toLowerCase())) {
+    return lastProduct;
+  }
+  for (const [keyword, product] of Object.entries(productKeywords)) {
+    if (lowerMessage.includes(keyword)) {
+      return product;
+    }
+  }
+  return lastProduct || null;
+}
+
+
+
 const UPGRADE_MESSAGE = 'You have reached your plan limit. Upgrade to the paid plan for unlimited questions and uploads at https://careerengine.in/upgrade.';
 
 const checkLimits = async (req, res, next) => {
@@ -105,10 +174,6 @@ const checkLimits = async (req, res, next) => {
   }
 };
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-const index = pinecone.Index(process.env.PINECONE_INDEX);
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -236,93 +301,499 @@ app.get('/user/domains', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch domains' });
   }
 });
-app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
-  console.log("User Req", req.user);
+// 🔍 Fast local intent detection
+// app.post('/chat', authenticateApiKey, async (req, res) => {
+//   const { message, visitorId } = req.body;
+//   if (!message || typeof message !== 'string' || !visitorId) {
+//     return res.status(400).json({ error: 'Message and visitorId required' });
+//   }
 
-  const { filename, data, visitorId = 'default' } = req.body;
+//   try {
+//     const user = await User.findById(req.user.id);
+//     if (!user) return res.status(404).json({ error: 'User not found' });
 
-  if (!filename) return res.status(400).json({ error: 'Filename is required' });
-  if (!data) return res.status(400).json({ error: 'Data is required' });
+//     const lowerMsg = message.toLowerCase().trim();
+//     const session = await getSession(visitorId, user._id);
+
+//     // 👋 Greetings
+//     const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+//     if (greetings.some(greet => lowerMsg === greet || lowerMsg.startsWith(greet + ' '))) {
+//       const reply = "👋 Hello! I'm here to assist you with any La Vedaa Healthcure product. Please tell me what concern or product you're looking for help with.";
+//       await Chat.create({ userId: user._id, visitorId, message, reply });
+//       return res.json({ reply });
+//     }
+
+//     // 🔄 Manual product switch
+//     const switchIntent = /(other|different|else|switch|change).*(product|capsule|item)/i;
+//     if (switchIntent.test(lowerMsg)) {
+//       sessionMemory.set(visitorId, null);
+//     }
+
+//     // 🧠 1. Try detect intent locally
+//     let intent = detectIntent(message);
+
+//     // 🤖 2. GPT fallback if no intent matched
+//     if (!intent) {
+//       const intentPrompt = `Classify the user's intent into one of these: "pricing", "benefits", "ingredients", "usage", "link", or "other".\n\nMessage: "${message}"\n\nJust return the label.`;
+//       const intentResp = await openai.chat.completions.create({
+//         model: 'gpt-3.5-turbo',
+//         messages: [{ role: 'user', content: intentPrompt }]
+//       });
+//       intent = intentResp.choices[0].message.content.trim().toLowerCase();
+//     }
+
+//     // 🔍 Product matching
+//     let resolvedProduct = null;
+//     const matchedProducts = [];
+
+//     for (const key in productKeywords) {
+//       const regex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+//       if (regex.test(lowerMsg)) {
+//         const product = productKeywords[key].trim();
+//         if (!matchedProducts.includes(product)) matchedProducts.push(product);
+//       }
+//     }
+
+//     if (matchedProducts.length === 1) {
+//       resolvedProduct = matchedProducts[0];
+//       sessionMemory.set(visitorId, resolvedProduct);
+//     } else if (matchedProducts.length > 1) {
+//       const reply = matchedProducts.slice(0, 2).map((p, i) => `${i + 1}. ${p}`).join('\n');
+//       return res.json({
+//         reply: `I found more than one product that may match your concern:\n\n${reply}\n\nPlease ask about one of them or continue and I’ll assist with both.`
+//       });
+//     } else if (sessionMemory.has(visitorId)) {
+//       resolvedProduct = sessionMemory.get(visitorId);
+//     }
+
+//     // ❌ Still no product match
+//     if (!resolvedProduct) {
+//       return res.json({
+//         reply: "I couldn't identify the product you're asking about. Please mention a concern or product name (e.g., 'heart', 'energy', 'sleep')."
+//       });
+//     }
+
+//     // ✅ Free plan check
+//     if (user.plan === 'free' && user.questionCount >= 20) {
+//       return res.status(403).json({ reply: UPGRADE_MESSAGE });
+//     }
+
+//     // ⏳ Chat history
+//     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+//     const recentMessages = await Chat.find({
+//       userId: user._id,
+//       visitorId,
+//       createdAt: { $gte: since }
+//     }).sort({ createdAt: -1 }).limit(6);
+
+//     const chatHistory = recentMessages.reverse().flatMap(chat => [
+//       { role: 'user', content: chat.message },
+//       { role: 'assistant', content: chat.reply }
+//     ]);
+
+//     // 🔎 Embedding
+//     const embeddingResponse = await openai.embeddings.create({
+//       model: 'text-embedding-ada-002',
+//       input: message.trim()
+//     });
+//     const queryEmbedding = embeddingResponse.data[0].embedding;
+
+//     // 🔍 Pinecone query
+//     const pineconeFilter = {
+//       userId: String(user._id),
+//       product: resolvedProduct,
+//       ...(intent !== 'other' ? { field: intent } : {})
+//     };
+
+//     let queryResponse = await index.query({
+//       vector: queryEmbedding,
+//       topK: 20,
+//       includeMetadata: true,
+//       filter: pineconeFilter
+//     });
+
+//     if (queryResponse.matches.length === 0) {
+//       // Retry without intent
+//       queryResponse = await index.query({
+//         vector: queryEmbedding,
+//         topK: 20,
+//         includeMetadata: true,
+//         filter: {
+//           userId: String(user._id),
+//           product: resolvedProduct
+//         }
+//       });
+//     }
+
+//     if (queryResponse.matches.length === 0) {
+//       return res.json({
+//         reply: "I'm sorry, I don't have information on that right now. Please contact info@lavedaa.com or call 9888153555 for assistance."
+//       });
+//     }
+
+//     // 📄 Context
+//     const MAX_TEXT_LENGTH = 100;
+//     const context = queryResponse.matches.map(m => {
+//       const product = m.metadata.product || 'Unknown';
+//       const field = m.metadata.field || 'Unknown';
+//       let text = m.metadata.text || '';
+//       if (text.length > MAX_TEXT_LENGTH) {
+//         text = text.slice(0, MAX_TEXT_LENGTH) + '...';
+//       }
+//       return `PRODUCT: ${product}\nFIELD: ${field}\nTEXT: ${text}`;
+//     }).join('\n\n');
+
+//     // 🧾 GPT Prompt
+//     const systemPrompt = `You are a helpful assistant for La Vedaa Healthcure products.
+
+// Use only verified product data. Assume the active product is "${resolvedProduct}".
+
+// Never switch or guess another product unless user says so explicitly.`;
+
+//     const messages = [
+//       { role: 'system', content: systemPrompt },
+//       ...chatHistory,
+//       {
+//         role: 'user',
+//         content: `User asked: "${message}"\n\nUse ONLY the following context:\n\n${context}`
+//       }
+//     ];
+
+//     const completionResponse = await openai.chat.completions.create({
+//       model: 'gpt-3.5-turbo',
+//       messages
+//     });
+
+//     const reply = completionResponse.choices[0].message.content;
+
+//     // 💬 Save
+//     await Chat.create({ userId: user._id, visitorId, message, reply });
+
+//     // 🧠 Update session
+//     await updateSession(visitorId, user._id, {
+//       lastProduct: resolvedProduct,
+//       lastIntent: intent
+//     });
+
+//     // 📊 Usage
+//     if (user.plan === 'free') {
+//       user.questionCount += 1;
+//       await user.save();
+//     }
+
+//     res.json({ reply });
+
+//   } catch (err) {
+//     console.error('❗ Chat error:', err);
+//     res.status(500).json({
+//       reply: "Oops! Something went wrong. Please contact info@lavedaa.com or call 9888153555."
+//     });
+//   }
+// });
+app.post('/chat', authenticateApiKey, async (req, res) => {
+  const { message, visitorId } = req.body;
+  if (!message || typeof message !== 'string' || !visitorId) {
+    return res.status(400).json({ error: 'Message and visitorId required' });
+  }
 
   try {
     const user = await User.findById(req.user.id);
-    console.log(user, "User");
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    let vectors = [];
+    const session = await getSession(visitorId, user._id);
+    console.log("🧠 Loaded session for visitor:", visitorId, session);
+    const lowerMsg = message.toLowerCase().trim();
 
-    // Try parse JSON - if fails, treat as plain text
-    let products;
-    try {
-      products = JSON.parse(data);
-    } catch {
-      products = null;
+    const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+    if (greetings.some(greet => lowerMsg === greet || lowerMsg.startsWith(greet + ' '))) {
+      const reply = "👋 Hello! I'm here to assist you with any La Vedaa Healthcure product. Please tell me what concern or product you're looking for help with.";
+      await Chat.create({ userId: user._id, visitorId, message, reply });
+      return res.json({ reply });
     }
 
-    if (products && Array.isArray(products)) {
-      // Structured JSON upload - each product embedded separately
-      for (let i = 0; i < products.length; i++) {
-        const { title, text } = products[i];
-        if (!text?.trim()) continue;
+    const switchIntent = /(other|different|else|switch|change).*(product|capsule|item)/i;
+    if (switchIntent.test(lowerMsg)) {
+      sessionMemory.set(visitorId, null);
+    }
 
-        const embeddingResponse = await openai.embeddings.create({
-          model: 'text-embedding-ada-002',
-          input: text.trim()
-        });
+    let intent = detectIntent(message);
+    if (!intent) {
+      const intentPrompt = `This is a user message: "${message}". Identify the most relevant intent for it.\n\nChoose from one of the following:\n- benefits\n- pricing\n- usage\n- ingredients\n- link\n- ideal_for\n\nOnly respond with the intent keyword.`;
 
-        vectors.push({
-          id: `${req.user.id}_${visitorId}_${filename}_${i}`,
-          values: embeddingResponse.data[0].embedding,
-          metadata: {
-            userId: req.user.id.toString(),
-            visitorId,
-            filename,
-            title,
-            text,
-            createdAt: new Date().toISOString()
-          }
+      const intentResp = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: intentPrompt }]
+      });
+
+      const rawIntent = intentResp.choices[0].message.content.trim().toLowerCase();
+      if (Object.keys(intentKeywords).includes(rawIntent)) {
+        intent = rawIntent;
+      } else {
+        intent = null;
+      }
+    }
+console.log("🔍 User message:", message);
+console.log("🎯 Detected intent:", intent);
+    const productScoreMap = {};
+    for (const [phrase, product] of Object.entries(productKeywords)) {
+      const phraseLower = phrase.toLowerCase();
+      const messageWords = lowerMsg.split(/\s+/);
+      const phraseWords = phraseLower.split(/\s+/);
+      const overlap = phraseWords.filter(pw => messageWords.includes(pw)).length;
+
+      if (lowerMsg.includes(phraseLower) || phraseLower.includes(lowerMsg) || overlap > 0) {
+        if (!productScoreMap[product]) productScoreMap[product] = 0;
+        productScoreMap[product] += overlap;
+      }
+    }
+
+    const sortedProducts = Object.entries(productScoreMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([product]) => product);
+
+    const matchedLimit = sortedProducts.slice(0, 2);
+    let sessionProduct = matchedLimit[0] || session?.lastProduct;
+
+   if (matchedLimit.length > 1 && intent !== 'pricing') {
+  // ✅ SAVE matched products BEFORE returning
+  await updateSession(visitorId, user._id, {
+    lastMatchedProducts: matchedLimit,
+    lastIntent: intent,
+    lastProduct: matchedLimit[0] // Optional, pick first one as default
+  });
+
+  return res.json({
+    reply: `I found more than one product that may match your concern:\n\n${matchedLimit.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nPlease tell me which one you'd like to know more about.`
+  });
+}
+
+    if (!sessionProduct) {
+      return res.json({ reply: "I couldn't identify the product you're asking about. Please mention a concern or product name (e.g., 'heart', 'energy', 'sleep')." });
+    }
+
+    if (user.plan === 'free' && user.questionCount >= 20) {
+      return res.status(403).json({ reply: UPGRADE_MESSAGE });
+    }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentMessages = await Chat.find({
+      userId: user._id,
+      visitorId,
+      createdAt: { $gte: since }
+    }).sort({ createdAt: -1 }).limit(6);
+
+    const chatHistory = recentMessages.reverse().flatMap(chat => [
+      { role: 'user', content: chat.message },
+      { role: 'assistant', content: chat.reply }
+    ]);
+
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: message.trim()
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
+let productsToUse = [];
+
+if (intent === 'pricing') {
+  if (matchedLimit.length > 0) {
+    productsToUse = matchedLimit;
+    console.log("📦 Using current matched products for pricing:", matchedLimit);
+  } else if (session?.lastMatchedProducts?.length > 1) {
+    console.log("🧠 Using lastMatchedProducts:", session.lastMatchedProducts);
+    productsToUse = session.lastMatchedProducts;
+    console.log("🧠 Using last session matched products for pricing:", session.lastMatchedProducts);
+  } else if (session?.lastProduct) {
+    productsToUse = [session.lastProduct];
+    console.log("🧠 Using last single product from session for pricing:", session.lastProduct);
+  }
+} else {
+   if (matchedLimit.length > 0) {
+    productsToUse = [matchedLimit[0]];
+  } else if (
+    session?.lastIntent === 'pricing' &&
+    session?.lastMatchedProducts?.length > 1
+  ) {
+    productsToUse = session.lastMatchedProducts;
+  } else if (session?.lastProduct) {
+    productsToUse = [session.lastProduct];
+  }
+  console.log("✅ Using product for non-pricing intent:", productsToUse);
+}
+
+
+if (productsToUse.length === 0) {
+  console.warn("❌ No product available to respond with");
+  return res.json({
+    reply: "I couldn't identify the product you're asking about. Please mention a concern or product name (e.g., 'heart', 'energy', 'sleep')."
+  });
+}
+
+    const allMatchedReplies = [];
+
+    for (const product of productsToUse) {
+      const pineconeFilter = {
+        userId: String(user._id),
+        product,
+        ...(intent !== 'other' ? { field: intent } : {})
+      };
+
+      let queryResponse = await index.query({
+        vector: queryEmbedding,
+        topK: 20,
+        includeMetadata: true,
+        filter: pineconeFilter
+      });
+
+      if (queryResponse.matches.length === 0) {
+        queryResponse = await index.query({
+          vector: queryEmbedding,
+          topK: 20,
+          includeMetadata: true,
+          filter: { userId: String(user._id), product }
         });
       }
-    } else {
-      // Plain text upload - chunk & embed as usual
-      const chunkSize = 5000;
-      for (let i = 0; i < data.length; i += chunkSize) {
-        const chunk = data.slice(i, i + chunkSize).trim();
-        if (!chunk) continue;
 
-        const embeddingResponse = await openai.embeddings.create({
-          model: 'text-embedding-ada-002',
-          input: chunk
-        });
+      if (queryResponse.matches.length === 0) continue;
 
-        vectors.push({
-          id: `${req.user.id}_${visitorId}_${filename}_${Math.floor(i / chunkSize)}`,
-          values: embeddingResponse.data[0].embedding,
-          metadata: {
-            userId: req.user.id.toString(),
-            visitorId,
-            filename,
-            text: chunk,
-            createdAt: new Date().toISOString()
-          }
-        });
-      }
+      const MAX_TEXT_LENGTH = 100;
+      const context = queryResponse.matches.map(m => {
+        const field = m.metadata.field || 'Unknown';
+        let text = m.metadata.text || '';
+        if (text.length > MAX_TEXT_LENGTH) text = text.slice(0, MAX_TEXT_LENGTH) + '...';
+        return `PRODUCT: ${product}\nFIELD: ${field}\nTEXT: ${text}`;
+      }).join('\n\n');
+
+      const systemPrompt = `You are a helpful assistant for La Vedaa Healthcure products.\nUse only verified product data. Assume the active product is "${product}".\nNever switch or guess another product unless user says so explicitly.`;
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...chatHistory,
+        { role: 'user', content: `User asked: "${message}"\n\nUse ONLY the following context:\n\n${context}` }
+      ];
+
+      const completionResponse = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages
+      });
+
+      allMatchedReplies.push(completionResponse.choices[0].message.content);
+    }
+
+    const finalReply = allMatchedReplies.length > 1 ? allMatchedReplies.join('\n\n') : allMatchedReplies[0];
+    await Chat.create({ userId: user._id, visitorId, message, reply: finalReply });
+if (matchedLimit.length > 0) {
+  await updateSession(visitorId, user._id, {
+    lastProduct: matchedLimit[0],
+    lastIntent: intent,
+    lastMatchedProducts: matchedLimit
+  });
+} else {
+  await updateSession(visitorId, user._id, {
+    lastIntent: intent
+  });
+}
+// ✅ DEBUG: Confirm session was saved properly
+const sessionAfter = await Session.findOne({ visitorId, userId: user._id }).lean();
+console.log("✅ Session after update:", sessionAfter);
+console.log("💾 Session updated with products:", matchedLimit);
+
+    if (user.plan === 'free') {
+      user.questionCount += 1;
+      await user.save();
+    }
+
+    res.json({ reply: finalReply });
+
+  } catch (err) {
+    console.error('❗ Chat error:', err);
+    res.status(500).json({ reply: "Oops! Something went wrong. Please contact info@lavedaa.com or call 9888153555." });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==============================
+// 📦 /upload Route (Field-Level)
+// ==============================
+
+
+
+
+app.post('/upload', authenticateToken, checkLimits, async (req, res) => {
+  const { filename, data, visitorId = 'default' } = req.body;
+  if (!filename || !data) {
+    return res.status(400).json({ error: 'Filename and data are required' });
+  }
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const products = JSON.parse(data);
+
+    console.log("products:======", products);
+
+    const vectors = [];
+
+    for (let i = 0; i < products.length; i++) {
+      const { product, field, text } = products[i];
+
+      // Skip incomplete entries
+      if (!product || !field || !text?.trim()) continue;
+
+      // Get embedding from OpenAI
+      const embeddingResponse = await openai.embeddings.create({
+        model: 'text-embedding-ada-002',
+        input: text.trim()
+      });
+
+      // Create vector entry
+      vectors.push({
+        id: `${req.user.id}_${visitorId}_${filename}_${i}`,
+        values: embeddingResponse.data[0].embedding,
+        metadata: {
+          userId: req.user.id.toString(),
+          visitorId,
+          filename,
+          product,
+          field,
+          text,
+          createdAt: new Date().toISOString()
+        }
+      });
+
+      console.log("vectors:======", vectors);
     }
 
     if (vectors.length > 0) {
       await index.upsert(vectors, req.user.id.toString());
     }
 
-    if (user.plan === 'free') user.uploadCount += 1;
-    await user.save();
+    if (user.plan === 'free') {
+      user.uploadCount += 1;
+      await user.save();
+    }
 
-    res.status(200).json({ message: 'Data embedded and uploaded successfully.' });
-
+    res.status(200).json({ message: 'Field-level data uploaded successfully.' });
   } catch (err) {
     console.error('Upload Error:', err);
     res.status(500).json({ error: 'Failed to upload data' });
   }
 });
+
+
 
 
 
@@ -479,209 +950,7 @@ app.put('/vectors/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to update vector' });
   }
 });
-app.post('/chat', authenticateApiKey, async (req, res) => {
-  const { message, visitorId } = req.body;
 
-  if (!message || typeof message !== 'string' || !visitorId) {
-    return res.status(400).json({ error: 'Invalid message or visitorId' });
-  }
-
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    if (user.plan === 'free' && user.questionCount >= 20) {
-      return res.status(403).json({ reply: UPGRADE_MESSAGE });
-    }
-
-    // 🧠 1. Load previous chat history for context
-    const recentMessages = await Chat.find({
-      userId: user._id,
-      visitorId
-    }).sort({ createdAt: -1 }).limit(6);
-
-    const chatHistory = recentMessages
-      .reverse()
-      .flatMap(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: chat.reply }
-      ]);
-
-    // 🧠 2. Detect product from current message
-   const productKeywords = {
-  // Happy Heart Capsules
-  "happy heart": "Happy Heart Capsules",
-  "heart": "Happy Heart Capsules",
-  "heart care": "Happy Heart Capsules",
-  "cardio": "Happy Heart Capsules",
-  "blood pressure": "Happy Heart Capsules",
-  "cholesterol": "Happy Heart Capsules",
-  "circulation": "Happy Heart Capsules",
-  "bp": "Happy Heart Capsules",
-  "stress heart": "Happy Heart Capsules",
-
-  // Men Care Capsules
-  "men": "Men Care Capsules",
-  "men's care": "Men Care Capsules",
-  "male": "Men Care Capsules",
-  "testosterone": "Men Care Capsules",
-  "stamina": "Men Care Capsules",
-  "men health": "Men Care Capsules",
-  "recovery": "Men Care Capsules",
-  "performance": "Men Care Capsules",
-  "mens capsule": "Men Care Capsules",
-
-  // Deep Sleep Capsules
-  "sleep": "Deep Sleep Capsules",
-  "deep sleep": "Deep Sleep Capsules",
-  "insomnia": "Deep Sleep Capsules",
-  "relax": "Deep Sleep Capsules",
-  "anxiety": "Deep Sleep Capsules",
-  "calm": "Deep Sleep Capsules",
-  "sleep aid": "Deep Sleep Capsules",
-  "non habit sleep": "Deep Sleep Capsules",
-  "stress sleep": "Deep Sleep Capsules",
-
-  // Women Care Capsules
-  "women": "Women Care Capsules",
-  "ladies": "Women Care Capsules",
-  "female": "Women Care Capsules",
-  "women health": "Women Care Capsules",
-  "hormonal balance": "Women Care Capsules",
-  "pms": "Women Care Capsules",
-  "skin hair": "Women Care Capsules",
-  "metabolism": "Women Care Capsules",
-  "period pain": "Women Care Capsules",
-
-  // Energy Booster Capsules
-  "energy": "Energy Booster Capsules",
-  "booster": "Energy Booster Capsules",
-  "fatigue": "Energy Booster Capsules",
-  "tiredness": "Energy Booster Capsules",
-  "energy pills": "Energy Booster Capsules",
-  "boost stamina": "Energy Booster Capsules",
-  "energy support": "Energy Booster Capsules",
-  "body energy": "Energy Booster Capsules",
-
-  // Men Care & Energy Booster Combo Pack
-  "men combo": "Men Care & Energy Booster Combo Pack",
-  "men energy combo": "Men Care & Energy Booster Combo Pack",
-  "men care energy": "Men Care & Energy Booster Combo Pack",
-  "men full pack": "Men Care & Energy Booster Combo Pack",
-  "male combo": "Men Care & Energy Booster Combo Pack",
-  "both men energy": "Men Care & Energy Booster Combo Pack",
-  "combo for men": "Men Care & Energy Booster Combo Pack",
-  "men together pack": "Men Care & Energy Booster Combo Pack",
-  "men double pack": "Men Care & Energy Booster Combo Pack",
-  "men energy full combo": "Men Care & Energy Booster Combo Pack",
-  "complete men pack": "Men Care & Energy Booster Combo Pack",
-  "men + energy combo": "Men Care & Energy Booster Combo Pack",
-  "all in one men": "Men Care & Energy Booster Combo Pack",
-
-  // Women Care & Energy Booster Combo Pack
-  "women combo": "Women Care & Energy Booster Combo Pack",
-  "women energy combo": "Women Care & Energy Booster Combo Pack",
-  "women care energy": "Women Care & Energy Booster Combo Pack",
-  "women full pack": "Women Care & Energy Booster Combo Pack",
-  "ladies combo": "Women Care & Energy Booster Combo Pack",
-  "both women energy": "Women Care & Energy Booster Combo Pack",
-  "combo for women": "Women Care & Energy Booster Combo Pack",
-  "women together pack": "Women Care & Energy Booster Combo Pack",
-  "female combo pack": "Women Care & Energy Booster Combo Pack",
-  "women energy full combo": "Women Care & Energy Booster Combo Pack",
-  "complete women pack": "Women Care & Energy Booster Combo Pack",
-  "women + energy combo": "Women Care & Energy Booster Combo Pack",
-  "all in one women": "Women Care & Energy Booster Combo Pack"
-};
-
-    let lastProduct = sessionMemory.get(visitorId) || null;
-    for (const key in productKeywords) {
-      if (message.toLowerCase().includes(key)) {
-        lastProduct = productKeywords[key];
-        sessionMemory.set(visitorId, lastProduct);
-        break;
-      }
-    }
-
-    // 🔎 3. Embed the current question
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-ada-002',
-      input: message.trim(),
-    });
-    const queryEmbedding = embeddingResponse.data[0].embedding;
-
-    // 📡 4. Query Pinecone with userId and visitorId filter
-    let queryResponse = await index.query({
-      vector: queryEmbedding,
-      topK: 5,
-      includeMetadata: true,
-      filter: { userId: user._id.toString(), visitorId }
-    });
-
-    // fallback: query by userId only
-    if (queryResponse.matches.length === 0) {
-      queryResponse = await index.query({
-        vector: queryEmbedding,
-        topK: 5,
-        includeMetadata: true,
-        filter: { userId: user._id.toString() }
-      });
-    }
-
-    // 🧹 5. Filter context by last mentioned product
-    const filteredChunks = queryResponse.matches
-      .filter(m =>
-        lastProduct &&
-        m.metadata.text.toLowerCase().includes(lastProduct.toLowerCase())
-      )
-      .map(m => m.metadata.text);
-
-    const context = (filteredChunks.length > 0
-      ? filteredChunks
-      : queryResponse.matches.map(m => m.metadata.text)
-    ).join('\n');
-
-    // 📜 6. Strong system prompt
-    const systemPrompt = `
-You are a helpful assistant for La Vedaa Healthcure products.
-
-The customer is currently interested in: **${lastProduct || 'a specific product'}**
-
-ONLY answer about this product. If the user says "benefits", "description", "price", or "how to use", assume they mean **${lastProduct || 'that product'}**.
-
-⚠️ NEVER list all products. NEVER include other products unless the user clearly mentions them.
-
-Be concise, helpful, and on-topic.`;
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...chatHistory,
-      { role: 'user', content: `Context: ${context}\n\nQuestion: ${message}` }
-    ];
-
-    // 🧠 7. Get GPT response
-    const completionResponse = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages
-    });
-
-    const reply = completionResponse.choices[0].message.content;
-
-    // 💾 8. Save chat message
-    await Chat.create({ userId: user._id, visitorId, message, reply });
-
-    if (user.plan === 'free') {
-      user.questionCount += 1;
-      await user.save();
-    }
-
-    res.json({ reply });
-
-  } catch (err) {
-    console.error('Chat error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 app.post('/chat/reset-session', (req, res) => {
   const { visitorId } = req.body;
@@ -716,55 +985,63 @@ app.get('/user/plan', authenticateApiKey, async (req, res) => {
 });
 
 app.use(express.urlencoded({ extended: true }));
-app.post('/whatsapp', async (req, res) => {
-  const incomingMessage = req.body.Body;
-  const fromNumber = req.body.From;
+app.post('/whatsapp', authenticateApiKey, async (req, res) => {
+  const { From: fromNumber, Body: message } = req.body;
   try {
-    if (!fromNumber) {
-      console.error('Missing "From" in request body:', req.body);
-      return res.status(400).send('Missing sender number.');
-    }
-    const user = await User.findOne();
-    if (!incomingMessage || typeof incomingMessage !== 'string') {
+    const user = await User.findById(req.user.id);
+    const session = await getSession(fromNumber, user._id);
+    const product = findProductFromMessage(message, session.lastProduct);
+    const intent = detectIntent(message);
+
+    let reply = '';
+    if (product && intent === 'link') {
+      const linkEntry = jsonData.find(e => e.product === product && e.field === 'link');
       await twilioClient.messages.create({
-        body: 'Please send a valid message.',
+        contentSid: process.env.TWILIO_BUTTON_TEMPLATE_SID,
+        contentVariables: JSON.stringify({
+          product,
+          link: linkEntry?.text || 'https://jdwebservices.com/lavedaa'
+        }),
         from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
         to: fromNumber,
       });
-      return res.status(200).send('OK');
-    }
-    if (user.plan === 'free' && user.questionCount >= 20) {
-      console.log('WhatsApp question limit reached for user:', user._id);
-      await twilioClient.messages.create({
-        body: UPGRADE_MESSAGE,
-        from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-        to: fromNumber,
+      reply = `Check out ${product} here: ${linkEntry?.text}`;
+    } else {
+      const filter = { userId: user._id };
+      if (product) filter.product = product;
+      if (intent) filter.field = intent;
+      const queryResponse = await index.query({
+        vector: await openai.embeddings.create({
+          model: 'text-embedding-ada-002',
+          input: message,
+        }).then(res => res.data[0].embedding),
+        topK: 5,
+        includeMetadata: true,
+        filter,
+        minScore: 0.75,
       });
-      return res.status(200).send('OK');
-    }
-    const reply = await processMessage(incomingMessage, user, 'default');
-    if (reply === UPGRADE_MESSAGE) {
-      console.log('WhatsApp returning upgrade message for user:', user._id);
+      const context = queryResponse.matches.map(match => match.metadata.text).join('\n');
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: `Provide a concise WhatsApp-friendly response about ${product || 'our products'}. Focus on ${intent || 'relevant details'}. Include links if relevant. Add: "Please consult a physician for persistent issues" for health queries.` },
+          { role: 'user', content: `Context: ${context}\n\nQuestion: ${message}` },
+        ],
+      });
+      reply = response.choices[0].message.content;
       await twilioClient.messages.create({
         body: reply,
         from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
         to: fromNumber,
       });
-      return res.status(200).send('OK');
     }
-    await twilioClient.messages.create({
-      body: reply,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: fromNumber,
-    });
-    if (user.plan === 'free') {
-      user.questionCount += 1;
-      await user.save();
-    }
-    res.status(200).send('OK');
-  } catch (error) {
-    console.error('Error processing WhatsApp message:', error.message);
-    res.status(200).send('OK');
+
+    await Chat.create({ userId: user._id, visitorId: fromNumber, message, reply });
+    await updateSession(fromNumber, user._id, { lastProduct: product, lastIntent: intent });
+    res.status(200).send('Message processed');
+  } catch (err) {
+    logger.error(`WhatsApp error: ${err.message}`);
+    res.status(500).send('Error processing message');
   }
 });
 
@@ -785,10 +1062,10 @@ async function processMessage(message, user, visitorId = 'default') {
     });
     const queryEmbedding = embeddingResponse.data[0].embedding;
     console.log("Querying Pinecone with embedding of length", queryEmbedding.length);
-    
+
     let queryResponse = await index.query({
       vector: queryEmbedding,
-      topK: 5,
+      topK: 20,
       includeMetadata: true,
       filter: {
         userId: user._id.toString(),
@@ -812,7 +1089,7 @@ async function processMessage(message, user, visitorId = 'default') {
       console.warn('No matches with visitorId filter, trying userId only:', { userId: user._id.toString() });
       queryResponse = await index.query({
         vector: queryEmbedding,
-        topK: 5,
+        topK: 20,
         includeMetadata: true,
         filter: {
           userId: user._id.toString()
@@ -831,7 +1108,7 @@ async function processMessage(message, user, visitorId = 'default') {
         }))
       });
     }
-const context = (filteredChunks.length > 0 ? filteredChunks : queryResponse.matches.map(m => m.metadata.text)).join('\n');
+    const context = (filteredChunks.length > 0 ? filteredChunks : queryResponse.matches.map(m => m.metadata.text)).join('\n');
     console.log('Context length:', context.length, 'Context sample:', context.slice(0, 200));
     if (!context) {
       console.warn('No context retrieved from Pinecone for query:', message);
