@@ -5,7 +5,7 @@ export default function UploadData() {
   const [data, setData] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [jsonMode, setJsonMode] = useState(false); // Toggle for structured input
+  const [jsonMode, setJsonMode] = useState(true); // Field-level JSON mode by default
 
   const handleUpload = async (e) => {
     e.preventDefault();
@@ -23,17 +23,18 @@ export default function UploadData() {
 
     try {
       if (jsonMode) {
-        // Try to parse and flatten structured JSON
         const parsed = JSON.parse(data);
-        if (!parsed.products || !Array.isArray(parsed.products)) {
-          throw new Error("Invalid JSON structure. Expected 'products' array.");
+        if (!Array.isArray(parsed)) {
+          throw new Error("Invalid format. Expected an array of objects.");
         }
 
-        const flatText = parsed.products
-          .map(p => `${p.title}\n\n${p.text}`)
-          .join('\n\n---\n\n');
+        for (const item of parsed) {
+          if (!item.product || !item.field || !item.text) {
+            throw new Error("Each object must contain 'product', 'field', and 'text'.");
+          }
+        }
 
-        payload.data = flatText;
+        payload.data = JSON.stringify(parsed);
       } else {
         payload.data = data;
       }
@@ -72,7 +73,7 @@ export default function UploadData() {
 
   return (
     <div className="max-w-xl mx-auto p-4 mt-10 bg-white shadow-xl rounded-lg">
-      <h2 className="text-2xl font-semibold mb-4">Upload New Data</h2>
+      <h2 className="text-2xl font-semibold mb-4">Upload Structured Product Data</h2>
       <form onSubmit={handleUpload} className="space-y-4">
         <div className="flex items-center mb-2">
           <input
@@ -81,11 +82,11 @@ export default function UploadData() {
             onChange={() => setJsonMode(!jsonMode)}
             className="mr-2"
           />
-          <label>Structured JSON Mode (products array)</label>
+          <label>Structured JSON Mode (product + field + text)</label>
         </div>
 
         <div>
-          <label className="block mb-1 font-medium">Filename {filename}</label>
+          <label className="block mb-1 font-medium">Filename</label>
           <input
             type="text"
             value={filename}
@@ -97,21 +98,25 @@ export default function UploadData() {
 
         <div>
           <label className="block mb-1 font-medium">
-            {jsonMode ? "Paste Product JSON" : "Paste Raw Text Content"}
+            {jsonMode ? "Paste Field-Level JSON Data" : "Paste Raw Text Content"}
           </label>
           <textarea
-            rows={10}
+            rows={12}
             value={data}
             onChange={(e) => setData(e.target.value)}
             className="w-full border p-2 rounded font-mono"
-            placeholder={jsonMode ? `{
-  "products": [
-    {
-      "title": "Product Name",
-      "text": "Benefits and description here..."
-    }
-  ]
-}` : "Paste plain text data to embed..."}
+            placeholder={jsonMode ? `[
+  {
+    "product": "Happy Heart Capsules",
+    "field": "benefits",
+    "text": "Improves blood circulation and reduces stress."
+  },
+  {
+    "product": "Happy Heart Capsules",
+    "field": "pricing",
+    "text": "MRP ₹1295 | Basic ₹899 | Coupon ₹849 (Code: SPECIAL50)"
+  }
+]` : "Paste plain text to embed..."}
             required
           />
         </div>

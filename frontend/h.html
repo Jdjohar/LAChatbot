@@ -157,7 +157,200 @@ req.userId: <ref *2> IncomingMessage {
       [Symbol(http.server.connectionsCheckingInterval)]: Timeout {
         _idleTimeout: 30000,
         _idlePrev: [TimersList],
-        _idleNext: [TimersList],
+      // Updated /chat route with fuzzy product matching and GPT intent fallback including language/typo support
+
+function detectIntentLocal(message) {
+  const lowerMessage = message.toLowerCase();
+  for (const [intent, keywords] of Object.entries(intentKeywords)) {
+    if (keywords.some(keyword => lowerMessage.includes(keyword))) {
+      return intent;
+    }
+  }
+  return null;
+}
+
+const intentKeywords = {
+  benefits: ['benefits', 'advantages', 'helps with', 'what does it do', 'head pain', 'headache'],
+  ingredients: ['ingredients', 'made of', 'contains', 'what’s in it'],
+  pricing: ['price', 'cost', 'how much', 'pricing', 'kine da hai', 'kinne', 'kina'],
+  usage: ['how to use', 'dosage', 'instructions', 'how to take', 'how it work', 'how does it work', 'how it works', 'its how work'],
+  ideal_for: ['who is it for', 'suitable for', 'recommended for'],
+  link: ['buy', 'purchase', 'where to get', 'link', 'lehna', 'kithon']
+};
+
+app.post('/chat', authenticateApiKey, async (req, res) => {
+  const { message, visitorId } = req.body;
+  if (!message || typeof message !== 'string' || !visitorId) {
+    return res.status(400).json({ error: 'Message and visitorId required' });
+  }
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const session = await getSession(visitorId, user._id);
+    const lowerMsg = message.toLowerCase().trim();
+
+    // 👋 Greetings
+    const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
+    if (greetings.some(greet => lowerMsg === greet || lowerMsg.startsWith(greet + ' '))) {
+      const reply = "👋 Hello! I'm here to assist you with any La Vedaa Healthcure product. Please tell me what concern or product you're looking for help with.";
+      await Chat.create({ userId: user._id, visitorId, message, reply });
+      return res.json({ reply });
+    }
+
+    // 🔄 Product switch reset
+    const switchIntent = /(other|different|else|switch|change).*(product|capsule|item)/i;
+    if (switchIntent.test(lowerMsg)) {
+      sessionMemory.set(visitorId, null);
+    }
+
+    // 🧬 Intent detection (local first, fallback to GPT)
+    let intent = detectIntentLocal(message);
+    if (!intent) {
+      const intentPrompt = `This is a user message: "${message}". Identify the most relevant intent for it.\n\nChoose from one of the following:\n- benefits\n- pricing\n- usage\n- ingredients\n- link\n- ideal_for\n\nOnly respond with the intent keyword.`;
+
+      const intentResp = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: intentPrompt }]
+      });
+
+      const rawIntent = intentResp.choices[0].message.content.trim().toLowerCase();
+      if (Object.keys(intentKeywords).includes(rawIntent)) {
+        intent = rawIntent;
+      } else {
+        intent = null;
+      }
+    }
+
+    // 🔍 Fuzzy Product Matching (up to 2 unique matches)
+    const matchedProducts = new Set();
+    for (const [phrase, product] of Object.entries(productKeywords)) {
+      if (phrase.toLowerCase().includes(lowerMsg) || lowerMsg.includes(phrase.toLowerCase())) {
+        matchedProducts.add(product);
+        continue;
+      }
+
+      const words = lowerMsg.split(/\s+/);
+      for (const word of words) {
+        if (phrase.toLowerCase().includes(word)) {
+          matchedProducts.add(product);
+          break;
+        }
+      }
+    }
+
+    const matchedLimit = Array.from(matchedProducts).slice(0, 2);
+    let sessionProduct = matchedLimit[0] || session?.lastProduct;
+
+    if (matchedLimit.length > 1) {
+      return res.json({
+        reply: `I found more than one product that may match your concern:\n\n${matchedLimit.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nPlease tell me which one you'd like to know more about.`
+      });
+    }
+
+    if (!sessionProduct) {
+      return res.json({
+        reply: "I couldn't identify the product you're asking about. Please mention a concern or product name (e.g., 'heart', 'energy', 'sleep')."
+      });
+    }
+
+    // ✅ Free plan check
+    if (user.plan === 'free' && user.questionCount >= 20) {
+      return res.status(403).json({ reply: UPGRADE_MESSAGE });
+    }
+
+    // ⏳ Chat history
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentMessages = await Chat.find({
+      userId: user._id,
+      visitorId,
+      createdAt: { $gte: since }
+    }).sort({ createdAt: -1 }).limit(6);
+
+    const chatHistory = recentMessages.reverse().flatMap(chat => [
+      { role: 'user', content: chat.message },
+      { role: 'assistant', content: chat.reply }
+    ]);
+
+    // �udd0e Embedding
+    const embeddingResponse = await openai.embeddings.create({
+      model: 'text-embedding-ada-002',
+      input: message.trim()
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
+    // �udd0e Pinecone query
+    const pineconeFilter = {
+      userId: String(user._id),
+      product: sessionProduct,
+      ...(intent !== 'other' ? { field: intent } : {})
+    };
+
+    let queryResponse = await index.query({
+      vector: queryEmbedding,
+      topK: 20,
+      includeMetadata: true,
+      filter: pineconeFilter
+    });
+
+    if (queryResponse.matches.length === 0) {
+      queryResponse = await index.query({
+        vector: queryEmbedding,
+        topK: 20,
+        includeMetadata: true,
+        filter: { userId: String(user._id), product: sessionProduct }
+      });
+    }
+
+    if (queryResponse.matches.length === 0) {
+      return res.json({
+        reply: "I'm sorry, I don't have information on that right now. Please contact info@lavedaa.com or call 9888153555 for assistance."
+      });
+    }
+
+    // 📄 Prepare context
+    const MAX_TEXT_LENGTH = 100;
+    const context = queryResponse.matches.map(m => {
+      const product = m.metadata.product || 'Unknown';
+      const field = m.metadata.field || 'Unknown';
+      let text = m.metadata.text || '';
+      if (text.length > MAX_TEXT_LENGTH) text = text.slice(0, MAX_TEXT_LENGTH) + '...';
+      return `PRODUCT: ${product}\nFIELD: ${field}\nTEXT: ${text}`;
+    }).join('\n\n');
+
+    // 📏 Prompt
+    const systemPrompt = `You are a helpful assistant for La Vedaa Healthcure products.\nUse only verified product data. Assume the active product is "${sessionProduct}".\nNever switch or guess another product unless user says so explicitly.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory,
+      { role: 'user', content: `User asked: "${message}"\n\nUse ONLY the following context:\n\n${context}` }
+    ];
+
+    const completionResponse = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages
+    });
+
+    const reply = completionResponse.choices[0].message.content;
+
+    await Chat.create({ userId: user._id, visitorId, message, reply });
+    await updateSession(visitorId, user._id, { lastProduct: sessionProduct, lastIntent: intent });
+
+    if (user.plan === 'free') {
+      user.questionCount += 1;
+      await user.save();
+    }
+
+    res.json({ reply });
+
+  } catch (err) {
+    console.error('❗ Chat error:', err);
+    res.status(500).json({ reply: "Oops! Something went wrong. Please contact info@lavedaa.com or call 9888153555." });
+  }
+});
+  _idleNext: [TimersList],
         _idleStart: 1127,
         _onTimeout: [Function: bound checkConnections],
         _timerArgs: undefined,
