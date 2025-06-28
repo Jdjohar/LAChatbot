@@ -24,7 +24,7 @@ export default function ManageKeywords() {
     ];
     const fetchKeywords = async () => {
         try {
-            const res = await fetch('http://localhost:3000/admin/keywords', {
+            const res = await fetch('https://lachatbot.onrender.com/admin/keywords', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -45,8 +45,8 @@ export default function ManageKeywords() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const url = editingId
-            ? `http://localhost:3000/admin/keywords/${editingId}`
-            : 'http://localhost:3000/admin/keywords';
+            ? `https://lachatbot.onrender.com/admin/keywords/${editingId}`
+            : 'https://lachatbot.onrender.com/admin/keywords';
         const method = editingId ? 'PUT' : 'POST';
 
         const res = await fetch(url, {
@@ -77,7 +77,7 @@ export default function ManageKeywords() {
     const handleDelete = async (id) => {
         if (!window.confirm('Delete this keyword?')) return;
 
-        const res = await fetch(`http://localhost:3000/admin/keywords/${id}`, {
+        const res = await fetch(`https://lachatbot.onrender.com/admin/keywords/${id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${token}` }
         });

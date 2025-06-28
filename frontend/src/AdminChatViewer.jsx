@@ -7,7 +7,7 @@ export default function AdminChatViewer() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    fetch('http://localhost:3000/admin/chats') // Adjust this if deployed
+    fetch('https://lachatbot.onrender.com/admin/chats') // Adjust this if deployed
       .then(res => res.json())
       .then(data => setSessions(data.sessions || []))
       .catch(err => console.error('Failed to load sessions:', err));
@@ -15,7 +15,7 @@ export default function AdminChatViewer() {
 
  useEffect(() => {
   if (!selectedVisitorId) return;
-  fetch(`http://localhost:3000/admin/chats/${selectedVisitorId}`)
+  fetch(`https://lachatbot.onrender.com/admin/chats/${selectedVisitorId}`)
     .then(res => res.json())
     .then(data => {
       console.log('API response:', data);

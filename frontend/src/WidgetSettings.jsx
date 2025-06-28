@@ -17,7 +17,7 @@ const WidgetSettings = () => {
 
   const fetchEmbedCode = async () => {
     try {
-      const res = await fetch(`http://localhost:3000/widget/${userId}`);
+      const res = await fetch(`https://lachatbot.onrender.com/widget/${userId}`);
       const { embedCode } = await res.json();
       setEmbedCode(embedCode);
     } catch (err) {
@@ -27,7 +27,7 @@ const WidgetSettings = () => {
 
   const handleSave = async () => {
     try {
-      const res = await fetch('http://localhost:3000/widget/settings', {
+      const res = await fetch('https://lachatbot.onrender.com/widget/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
