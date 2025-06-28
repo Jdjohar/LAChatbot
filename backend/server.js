@@ -537,10 +537,34 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
     const uniqueMatches = [...new Set(matchedProducts)];
 
     if (uniqueMatches.length === 0 && !session?.lastProduct) {
-      return res.json({
-        reply: `I couldn't identify the product you're asking about. Please mention a concern or product name (e.g., 'heart', 'energy', 'sleep').\n\n📞 For more help, contact our support team at info@lavedaa.com or call 9888153555.`
-      });
-    }
+  // 🧠 Ask GPT to infer a possible keyword (like 'pain', 'sleep', etc.)
+  const gptKeywordPrompt = `The user message is: "${message}". Extract the most relevant keyword related to a health concern or product category from this message. Respond with just one word like "pain", "sleep", "energy", "heart", etc.`;
+
+  const keywordResp = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [{ role: 'user', content: gptKeywordPrompt }]
+  });
+
+  const inferredKeyword = keywordResp.choices[0].message.content.trim().toLowerCase();
+  console.log("🧠 Fallback inferred keyword:", inferredKeyword);
+
+  const fallbackMatches = Object.entries(productKeywords)
+    .filter(([phrase]) => phrase.toLowerCase().includes(inferredKeyword))
+    .map(([, product]) => product);
+
+  const fallbackUnique = [...new Set(fallbackMatches)];
+
+  if (fallbackUnique.length > 0) {
+    return res.json({
+      reply: `Based on your concern "${inferredKeyword}", I recommend: ${fallbackUnique[0]}. Would you like to know its price, usage, or benefits?`
+    });
+  }
+
+  return res.json({
+    reply: `Sorry, I couldn't identify a matching product for your concern.\n\nPlease mention a specific health issue (e.g., 'heart', 'energy', 'sleep'), or contact support:\n📧 info@lavedaa.com\n📞 9888153555`
+  });
+}
+
 
     const productsToUse = intent === 'pricing'
       ? (uniqueMatches.length ? uniqueMatches : session?.lastMatchedProducts || [session?.lastProduct])
