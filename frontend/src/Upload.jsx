@@ -45,7 +45,7 @@ export default function UploadData() {
     }
 
     try {
-      const res = await fetch('https://lachatbot.onrender.com/upload', {
+      const res = await fetch('http://localhost:3000/upload', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

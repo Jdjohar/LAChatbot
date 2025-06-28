@@ -5,6 +5,8 @@ import ChatbotApp from './ChatbotApp';
 import Upload from './Upload';
 import WidgetSettings from './WidgetSettings';
 import UploadData from "./UploadViewers";
+import ManageKeywords from "./ManageKeywords";
+import AdminChatViewer from "./AdminChatViewer";
 
 function App() {
   return (
@@ -16,6 +18,8 @@ function App() {
           <Route path="/upload" element={<Upload />} />
           <Route path="/widget" element={<WidgetSettings />} />
           <Route path="/uploadViewer" element={<UploadData />} />
+          <Route path="/manageKeywords" element={<ManageKeywords />} />
+          <Route path="/chatViewer" element={<AdminChatViewer />} />
         </Routes>
       </div>
     </Router>

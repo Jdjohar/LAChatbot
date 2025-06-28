@@ -17,8 +17,14 @@ export default function Navbar() {
         <Link to="/upload" className={linkStyle('/upload')}>
           📤 Upload
         </Link>
-        <Link to="/uploadViewer" className={linkStyle('/upload')}>
+        <Link to="/uploadViewer" className={linkStyle('/uploadViewer')}>
           📤 Upload Viewer
+        </Link>
+        <Link to="/manageKeywords" className={linkStyle('/manageKeywords')}>
+          📤 Manage Keywords
+        </Link>
+        <Link to="/chatViewer" className={linkStyle('/chatViewer')}>
+          📤 Chats
         </Link>
         <Link to="/widget" className={linkStyle('/widget')}>
           ⚙️ Widget

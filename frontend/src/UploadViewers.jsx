@@ -11,7 +11,7 @@ const VectorManager = () => {
   const fetchVectors = async () => {
     setLoading(true);
     try {
-      const url = `https://lachatbot.onrender.com/vectors${queryText ? `?queryText=${encodeURIComponent(queryText)}` : ''}`;
+      const url = `http://localhost:3000/vectors${queryText ? `?queryText=${encodeURIComponent(queryText)}` : ''}`;
       const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
@@ -30,7 +30,7 @@ const VectorManager = () => {
   const deleteVector = async (id) => {
     if (!window.confirm('Are you sure you want to delete this vector?')) return;
     try {
-      const res = await fetch(`https://lachatbot.onrender.com/vectors/${id}`, {
+      const res = await fetch(`http://localhost:3000/vectors/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`
@@ -47,7 +47,7 @@ const VectorManager = () => {
   const updateVector = async (id) => {
     const newText = editText[id] || '';
     try {
-      const res = await fetch(`https://lachatbot.onrender.com/vectors/${id}`, {
+      const res = await fetch(`http://localhost:3000/vectors/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

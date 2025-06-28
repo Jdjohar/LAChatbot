@@ -17,7 +17,7 @@ const AddDomainForm = () => {
       return;
     }
     try {
-      const response = await fetch('https://lachatbot.onrender.com/add-domain', {
+      const response = await fetch('http://localhost:3000/add-domain', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
