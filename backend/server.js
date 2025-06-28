@@ -17,6 +17,7 @@ const cors = require('cors');
 const { job } = require('./cron');
 const winston = require('winston');
 const adminProductKeywordsRoutes = require('./routes/adminProductKeywords');
+const adminChatRoutes = require('./routes/adminChatRoutes');
 
 const authenticateApiKey = require('./middleware/authenticateApiKey');
 const sessionMemory = new Map();
@@ -211,6 +212,8 @@ function authenticateAdmin(req, res, next) {
 
 app.use('/widget', widgetRoute);
 app.use('/admin', adminProductKeywordsRoutes);
+app.use('/admin', adminChatRoutes);
+
 
 app.get('/chats', authenticateApiKey, async (req, res) => {
   const { visitorId } = req.query;
@@ -527,13 +530,13 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
     }
 
     const matchedEntries = await ProductKeyword.find({ userId: user._id });
-   const productKeywords = {};
-matchedEntries.forEach(e => {
-  productKeywords[e.phrase.toLowerCase()] = {
-    product: e.product,
-    weight: e.weight || 1
-  };
-});
+    const productKeywords = {};
+    matchedEntries.forEach(e => {
+      productKeywords[e.phrase.toLowerCase()] = {
+        product: e.product,
+        weight: e.weight || 1
+      };
+    });
 
     const matchedProducts = Object.entries(productKeywords)
       .filter(([phrase]) => lowerMsg.includes(phrase))
@@ -564,7 +567,7 @@ matchedEntries.forEach(e => {
           return { phrase, product: productName, weight, score: matchScore };
         })
         .filter(m => m.score > 0);
-console.log("🧪 productKeywords preview:", Object.entries(productKeywords).slice(0, 5));
+      console.log("🧪 productKeywords preview:", Object.entries(productKeywords).slice(0, 5));
       // 👉 Group by product, and keep MAX(weight × score) per product
       const productScores = {};
 
@@ -575,7 +578,7 @@ console.log("🧪 productKeywords preview:", Object.entries(productKeywords).sli
         }
         productScores[match.product] += match.weight * match.score;
       }
-console.log("🧮 Final weighted scores:", productScores);
+      console.log("🧮 Final weighted scores:", productScores);
       // Sort by highest combined weight x match score
       const sortedFallback = Object.entries(productScores)
         .sort((a, b) => b[1] - a[1])
@@ -584,9 +587,9 @@ console.log("🧮 Final weighted scores:", productScores);
       if (sortedFallback.length > 0) {
 
         await updateSession(visitorId, user._id, {
-          lastProduct: sortedFallback[0],
+          lastProduct: sortedFallback[0].product,
           lastIntent: intent || 'benefits',
-          lastMatchedProducts: [sortedFallback[0]]
+          lastMatchedProducts: [sortedFallback[0].product]
         });
 
 
@@ -619,44 +622,60 @@ console.log("🧮 Final weighted scores:", productScores);
       ]);
 
     const allReplies = [];
-    for (const product of productsToUse) {
-      const pineconeFilter = { userId: String(user._id), product, ...(intent ? { field: intent } : {}) };
+    for (const productEntry of productsToUse) {
+  const productName = typeof productEntry === 'object' ? productEntry.product : productEntry;
 
-      let query = await index.query({ vector: queryEmbedding, topK: 20, includeMetadata: true, filter: pineconeFilter });
-      if (query.matches.length === 0) {
-        query = await index.query({ vector: queryEmbedding, topK: 20, includeMetadata: true, filter: { userId: String(user._id), product } });
-      }
-      if (query.matches.length === 0) continue;
+  const pineconeFilter = {
+    userId: String(user._id),
+    product: productName,
+    ...(intent ? { field: intent } : {})
+  };
 
-      const context = query.matches.map(m => {
-  const field = m.metadata?.field || 'Unknown';
-  let text = m.metadata?.text || 'No description available';
-  if (text.length > 100) text = text.slice(0, 100) + '...';
-  return `PRODUCT: ${product}\nFIELD: ${field}\nTEXT: ${text}`;
-}).join('\n\n');
+  let query = await index.query({
+    vector: queryEmbedding,
+    topK: 20,
+    includeMetadata: true,
+    filter: pineconeFilter
+  });
 
-      const messages = [
-        { role: 'system', content: `You are a helpful assistant. Use only verified product data. Active product is "${product}".` },
-        ...chatHistory,
-        {
-          role: 'user', content: `User asked: "${message}"
-Use ONLY this context:
-${context}`
-        }
-      ];
+  if (query.matches.length === 0) {
+    query = await index.query({
+      vector: queryEmbedding,
+      topK: 20,
+      includeMetadata: true,
+      filter: { userId: String(user._id), product: productName }
+    });
+  }
 
-      const response = await openai.chat.completions.create({ model: 'gpt-3.5-turbo', messages });
-      allReplies.push(response.choices[0].message.content);
+  if (query.matches.length === 0) continue;
+
+  const context = query.matches.map(m => {
+    const field = m.metadata?.field || 'Unknown';
+    let text = m.metadata?.text || 'No description available';
+    if (text.length > 100) text = text.slice(0, 100) + '...';
+    return `PRODUCT: ${productName}\nFIELD: ${field}\nTEXT: ${text}`;
+  }).join('\n\n');
+
+  const messages = [
+    { role: 'system', content: `You are a helpful assistant. Use only verified product data. Active product is "${productName}".` },
+    ...chatHistory,
+    {
+      role: 'user', content: `User asked: "${message}"\nUse ONLY this context:\n${context}`
     }
+  ];
+
+  const response = await openai.chat.completions.create({ model: 'gpt-3.5-turbo', messages });
+  allReplies.push(response.choices[0].message.content);
+}
 
     const finalReply = allReplies.length ? allReplies.join('\n\n') + `\n\n🔁 Want to ask about a different product? Type 'try another product'.` :
       `Sorry, I couldn't find relevant info. 📞 Contact support at info@lavedaa.com or call 9888153555.`;
 
     await Chat.create({ userId: user._id, visitorId, message, reply: finalReply });
     await updateSession(visitorId, user._id, {
-      lastProduct: productsToUse[0],
+      lastProduct: productsToUse[0].product,
       lastIntent: intent,
-      lastMatchedProducts: productsToUse
+      lastMatchedProducts: productsToUse[0].product
     });
 
     if (user.plan === 'free') {
