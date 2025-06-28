@@ -16,6 +16,7 @@ const widgetRoute = require('./routes/widget');
 const cors = require('cors');
 const { job } = require('./cron');
 const winston = require('winston');
+const adminProductKeywordsRoutes = require('./routes/adminProductKeywords');
 
 const authenticateApiKey = require('./middleware/authenticateApiKey');
 const sessionMemory = new Map();
@@ -84,7 +85,7 @@ const corsOptions = {
   },
   credentials: true,
   allowedHeaders: ['Authorization', 'Content-Type', 'X-API-Key', 'x-internal-auth', 'x-user-id'],
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   preflightContinue: false
 };
 
@@ -107,7 +108,7 @@ async function getSession(visitorId, userId) {
 }
 
 async function updateSession(visitorId, userId, data) {
-    console.log("🔄 updateSession called with:", { visitorId, userId, data });
+  console.log("🔄 updateSession called with:", { visitorId, userId, data });
 
   await Session.findOneAndUpdate(
     { visitorId, userId },
@@ -209,6 +210,7 @@ function authenticateAdmin(req, res, next) {
 }
 
 app.use('/widget', widgetRoute);
+app.use('/admin', adminProductKeywordsRoutes);
 
 app.get('/chats', authenticateApiKey, async (req, res) => {
   const { visitorId } = req.query;
@@ -525,10 +527,13 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
     }
 
     const matchedEntries = await ProductKeyword.find({ userId: user._id });
-    const productKeywords = {};
-    matchedEntries.forEach(e => {
-      productKeywords[e.phrase.toLowerCase()] = e.product;
-    });
+   const productKeywords = {};
+matchedEntries.forEach(e => {
+  productKeywords[e.phrase.toLowerCase()] = {
+    product: e.product,
+    weight: e.weight || 1
+  };
+});
 
     const matchedProducts = Object.entries(productKeywords)
       .filter(([phrase]) => lowerMsg.includes(phrase))
@@ -537,33 +542,63 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
     const uniqueMatches = [...new Set(matchedProducts)];
 
     if (uniqueMatches.length === 0 && !session?.lastProduct) {
-  // 🧠 Ask GPT to infer a possible keyword (like 'pain', 'sleep', etc.)
-  const gptKeywordPrompt = `The user message is: "${message}". Extract the most relevant keyword related to a health concern or product category from this message. Respond with just one word like "pain", "sleep", "energy", "heart", etc.`;
+      // 🧠 Ask GPT to infer a possible keyword (like 'pain', 'sleep', etc.)
+      const gptKeywordPrompt = `The user message is: "${message}". Extract the most relevant keyword related to a health concern or product category from this message. Respond with just one word like "pain", "sleep", "energy", "heart", etc.`;
 
-  const keywordResp = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [{ role: 'user', content: gptKeywordPrompt }]
-  });
+      const keywordResp = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: gptKeywordPrompt }]
+      });
 
-  const inferredKeyword = keywordResp.choices[0].message.content.trim().toLowerCase();
-  console.log("🧠 Fallback inferred keyword:", inferredKeyword);
+      const inferredKeyword = keywordResp.choices[0].message.content.trim().toLowerCase();
+      console.log("🧠 Fallback inferred keyword:", inferredKeyword);
 
-  const fallbackMatches = Object.entries(productKeywords)
-    .filter(([phrase]) => phrase.toLowerCase().includes(inferredKeyword))
-    .map(([, product]) => product);
+      const fallbackMatchesWithScore = Object.entries(productKeywords)
+        .map(([phrase, value]) => {
+          const matchScore =
+            phrase.includes(inferredKeyword) ? 1 : inferredKeyword.includes(phrase) ? 0.5 : 0;
 
-  const fallbackUnique = [...new Set(fallbackMatches)];
+          const productName = typeof value === 'string' ? value : value.product;
+          const weight = typeof value === 'object' ? value.weight || 1 : 1;
 
-  if (fallbackUnique.length > 0) {
-    return res.json({
-      reply: `Based on your concern "${inferredKeyword}", I recommend: ${fallbackUnique[0]}. Would you like to know its price, usage, or benefits?`
-    });
-  }
+          return { phrase, product: productName, weight, score: matchScore };
+        })
+        .filter(m => m.score > 0);
+console.log("🧪 productKeywords preview:", Object.entries(productKeywords).slice(0, 5));
+      // 👉 Group by product, and keep MAX(weight × score) per product
+      const productScores = {};
 
-  return res.json({
-    reply: `Sorry, I couldn't identify a matching product for your concern.\n\nPlease mention a specific health issue (e.g., 'heart', 'energy', 'sleep'), or contact support:\n📧 info@lavedaa.com\n📞 9888153555`
-  });
-}
+      for (const match of fallbackMatchesWithScore) {
+        const score = match.weight * match.score;
+        if (!productScores[match.product]) {
+          productScores[match.product] = 0;
+        }
+        productScores[match.product] += match.weight * match.score;
+      }
+console.log("🧮 Final weighted scores:", productScores);
+      // Sort by highest combined weight x match score
+      const sortedFallback = Object.entries(productScores)
+        .sort((a, b) => b[1] - a[1])
+        .map(([product]) => product);
+
+      if (sortedFallback.length > 0) {
+
+        await updateSession(visitorId, user._id, {
+          lastProduct: sortedFallback[0],
+          lastIntent: intent || 'benefits',
+          lastMatchedProducts: [sortedFallback[0]]
+        });
+
+
+        return res.json({
+          reply: `Based on your concern "${inferredKeyword}", I recommend: ${sortedFallback[0]}. Would you like to know its price, usage, or benefits?`
+        });
+      }
+
+      return res.json({
+        reply: `Sorry, I couldn't identify a matching product for your concern.\n\nPlease mention a specific health issue (e.g., 'heart', 'energy', 'sleep'), or contact support:\n📧 info@lavedaa.com\n📞 9888153555`
+      });
+    }
 
 
     const productsToUse = intent === 'pricing'
@@ -581,7 +616,7 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
       .limit(6)).reverse().flatMap(chat => [
         { role: 'user', content: chat.message },
         { role: 'assistant', content: chat.reply }
-    ]);
+      ]);
 
     const allReplies = [];
     for (const product of productsToUse) {
@@ -593,14 +628,21 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
       }
       if (query.matches.length === 0) continue;
 
-      const context = query.matches.map(m => `PRODUCT: ${product}\nFIELD: ${m.metadata.field}\nTEXT: ${m.metadata.text.slice(0, 100)}...`).join('\n\n');
+      const context = query.matches.map(m => {
+  const field = m.metadata?.field || 'Unknown';
+  let text = m.metadata?.text || 'No description available';
+  if (text.length > 100) text = text.slice(0, 100) + '...';
+  return `PRODUCT: ${product}\nFIELD: ${field}\nTEXT: ${text}`;
+}).join('\n\n');
 
       const messages = [
         { role: 'system', content: `You are a helpful assistant. Use only verified product data. Active product is "${product}".` },
         ...chatHistory,
-        { role: 'user', content: `User asked: "${message}"
+        {
+          role: 'user', content: `User asked: "${message}"
 Use ONLY this context:
-${context}` }
+${context}`
+        }
       ];
 
       const response = await openai.chat.completions.create({ model: 'gpt-3.5-turbo', messages });
