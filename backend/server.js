@@ -512,7 +512,8 @@ app.post('/chat', authenticateApiKey, async (req, res) => {
 
     const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening'];
     if (greetings.some(greet => lowerMsg === greet || lowerMsg.startsWith(greet + ' '))) {
-      const reply = "👋 Hello! I'm here to assist you with any La Vedaa Healthcure product. Please tell me what concern or product you're looking for help with.";
+      const reply1 = "👋 Hello! I'm here to assist you with any La Vedaa Healthcure product. Please tell me what concern or product you're looking for help with.";
+      const reply = "<strong>Hello and Welcome to La Vedaa</strong> I’m your Ayurvedic wellness expert, how can I help you? Are you looking for a specific product or health solution? Let’s find the perfect Ayurvedic match for you.";
       await Chat.create({ userId: user._id, visitorId, message, reply });
       return res.json({ reply });
     }
@@ -599,7 +600,7 @@ Choose from: benefits, pricing, usage, ingredients, link, ideal_for.`;
       }
 
       return res.json({
-        reply: `Sorry, I couldn't identify a matching product for your concern.\n\nPlease mention a specific health issue (e.g., 'heart', 'energy', 'sleep'), or contact support:\n📧 info@lavedaa.com\n📞 9888153555`
+        reply: `I'm sorry, but I don't have information regarding this. If you have any questions about our products, feel free to ask!`
       });
     }
 

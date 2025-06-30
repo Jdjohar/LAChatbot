@@ -32,7 +32,7 @@
         ${isMinimized ? `
           width: 60px;
           height: 60px;
-          background: ${settings.theme};
+          // background: ${settings.theme};
           border-radius: 50%;
           cursor: pointer;
           display: flex;
@@ -60,8 +60,21 @@
         width: 55px;
         height: 55px;
         object-fit: cover;
+            border: 2px solid #fff;
+    box-shadow: 2px 2px 10px #cfcfcf;
         border-radius: 50%;
       }
+        #chatbot-online-dot {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  width: 14px;
+  height: 14px;
+  background-color: #10b981; /* green */
+  border: 2px solid white;
+  border-radius: 50%;
+  z-index: 1000000;
+}
       #chatbot-header {
         background: ${settings.theme};
         color: white;
@@ -300,12 +313,16 @@
       render() {
         const { messages, input, loading, isMinimized, settings } = this.state;
         if (isMinimized) {
-          return window.React.createElement('div', { onClick: this.toggleMinimize }, [
+          return window.React.createElement('div', {
+            onClick: this.toggleMinimize,
+            style: { position: 'relative' } // Add this to position the dot correctly
+          }, [
             window.React.createElement('img', {
               id: 'chatbot-minimized-img',
               src: settings.avatar || 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
               alt: 'Chatbot'
-            })
+            }),
+            window.React.createElement('div', { id: 'chatbot-online-dot' }) // Add the dot here
           ]);
         }
 

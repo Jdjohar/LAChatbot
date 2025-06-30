@@ -23,7 +23,8 @@ const userSchema = new mongoose.Schema({
     theme: { type: String, default: '#1e3a8a' },
     position: { type: String, default: 'bottom-right' },
     avatar: { type: String, default: '' },
-    welcomeMessage: { type: String, default: 'Welcome to La Vedaa – I am here to help you' }
+    // welcomeMessage: { type: String, default: 'Welcome to La Vedaa – I am here to help you' }
+    welcomeMessage: { type: String, default: 'Hey welcome to La Vedaa store! <strong>How can i help you?</strong>' }
   },
   widgetApiKey: { type: String, default: () => uuidv4() }, // Unique API key for widget
 });
