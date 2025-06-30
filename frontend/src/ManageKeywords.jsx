@@ -48,14 +48,14 @@ export default function ManageKeywords() {
             ? `https://lachatbot.onrender.com/admin/keywords/${editingId}`
             : 'https://lachatbot.onrender.com/admin/keywords';
         const method = editingId ? 'PUT' : 'POST';
-
+const userId = localStorage.getItem('userid');
         const res = await fetch(url, {
             method,
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify(form)
+             body: JSON.stringify({ ...form, userId }) // include userId
         });
 
         if (res.ok) {
