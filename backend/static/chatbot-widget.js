@@ -7,8 +7,7 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'https://lachatbot.onrender.com';
-  // const apiUrl = 'http://localhost:3000';
+  const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -19,8 +18,8 @@
   const defaultSettings = {
     theme: '#1e3a8a',
     position: 'bottom-right',
-    avatar: '',
-    welcomeMessage: 'Hello! How can I assist you today?'
+    avatar: 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
+    welcomeMessage: 'Hello and Welcome to La Vedaa I’m your Ayurvedic wellness expert, how can I help you?'
   };
 
   function applyStyles(settings, isMinimized) {
@@ -32,7 +31,6 @@
         ${isMinimized ? `
           width: 60px;
           height: 60px;
-          // background: ${settings.theme};
           border-radius: 50%;
           cursor: pointer;
           display: flex;
@@ -60,21 +58,21 @@
         width: 55px;
         height: 55px;
         object-fit: cover;
-            border: 2px solid #fff;
-    box-shadow: 2px 2px 10px #cfcfcf;
+        border: 2px solid #fff;
+        box-shadow: 2px 2px 10px #cfcfcf;
         border-radius: 50%;
       }
-        #chatbot-online-dot {
-  position: absolute;
-  bottom: 6px;
-  right: 6px;
-  width: 14px;
-  height: 14px;
-  background-color: #10b981; /* green */
-  border: 2px solid white;
-  border-radius: 50%;
-  z-index: 1000000;
-}
+      #chatbot-online-dot {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        width: 14px;
+        height: 14px;
+        background-color: #10b981;
+        border: 2px solid white;
+        border-radius: 50%;
+        z-index: 1000000;
+      }
       #chatbot-header {
         background: ${settings.theme};
         color: white;
@@ -108,7 +106,6 @@
         height: 320px;
         overflow-y: auto;
         padding: 10px;
-        scrollbar-width: thin;
         display: flex;
         flex-direction: column;
       }
@@ -152,12 +149,18 @@
         color: #000;
         align-self: flex-start;
       }
-      .message strong {
-        font-weight: bold;
-      }
       .message a {
         color: ${settings.theme};
         text-decoration: underline;
+      }
+      .quick-buttons button {
+        margin: 4px;
+        padding: 6px 12px;
+        background-color: ${settings.theme};
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
       }
     `;
     document.head.appendChild(style);
@@ -171,205 +174,142 @@
   let scriptsLoaded = 0;
 
   function renderWidget() {
-    if (!window.React || !window.ReactDOM || !window.React.Component) {
+    if (!window.React || !window.ReactDOM) {
       widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot dependencies.</div>';
       return;
     }
 
     const e = window.React.createElement;
-
     class ChatbotWidget extends window.React.Component {
       constructor(props) {
         super(props);
         this.state = {
-          messages: [],
+          messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
           input: '',
           loading: false,
           isMinimized: true,
+          keywords: [],
           settings: defaultSettings
         };
         this.messagesEndRef = window.React.createRef();
       }
 
-      componentDidMount() {
-        this.fetchSettings();
-      }
-
-      fetchSettings = async () => {
-        try {
-          const res = await fetch(`${apiUrl}/widget/settings/${userId}`);
-          const settings = await res.json();
-          this.setState({ settings }, () => {
-            applyStyles(settings, this.state.isMinimized);
-          });
-        } catch {
-          applyStyles(defaultSettings, this.state.isMinimized);
-        }
-      };
-
-      addWelcomeMessage = () => {
-        this.setState(prev => ({
-          messages: [{ sender: 'bot', text: prev.settings.welcomeMessage }]
-        }), this.scrollToBottom);
-      };
-
-      fetchChats = async () => {
-        try {
-          const res = await fetch(`${apiUrl}/chats?visitorId=${visitorId}`, {
-            headers: { 'X-API-Key': apiKey }
-          });
-          const chats = await res.json();
-          const history = chats.flatMap(c => [
-            { sender: 'user', text: c.message },
-            ...(c.reply ? [{ sender: 'bot', text: c.reply }] : [])
-          ]);
-
-          this.setState(prev => ({
-            messages: [{ sender: 'bot', text: prev.settings.welcomeMessage }, ...history]
-          }), this.scrollToBottom);
-        } catch {
-          this.setState(prev => ({
-            messages: [...prev.messages, { sender: 'bot', text: 'Failed to load chat history.' }]
-          }));
-        }
-      };
-
-      sendMessage = async () => {
-        const { input, messages } = this.state;
-        if (!input.trim()) return;
-
-        this.setState({
-          input: '',
-          loading: true,
-          messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: '...' }]  // new line for typing dots
-        }, this.scrollToBottom);
-
-        try {
-          const res = await fetch(`${apiUrl}/chat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Key': apiKey
-            },
-            body: JSON.stringify({ message: input, visitorId })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'API error');
-
-          // Replace typing dots with actual reply
-          this.setState(prev => {
-            const updated = [...prev.messages];
-            updated.pop(); // remove the '...'
-            return {
-              messages: [...updated, { sender: 'bot', text: data.reply }],
-              loading: false
-            };
-          }, this.scrollToBottom);
-        } catch {
-          this.setState(prev => {
-            const updated = [...prev.messages];
-            updated.pop(); // remove the '...'
-            return {
-              messages: [...updated, { sender: 'bot', text: 'Server error. Please try again later.' }],
-              loading: false
-            };
-          }, this.scrollToBottom);
-        }
-      };
-
-      resetSession = async () => {
-        try {
-          await fetch(`${apiUrl}/chat/reset-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ visitorId })
-          });
-          this.setState({
-            messages: [{ sender: 'bot', text: this.state.settings.welcomeMessage }],
-            input: '',
-            loading: false
-          }, this.scrollToBottom);
-        } catch (err) {
-          console.error('Reset failed:', err);
-        }
-      };
-
       scrollToBottom = () => {
         this.messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       };
-
-      renderMessageText(text) {
-        const e = window.React.createElement;
-        const markdownLinkRegex = /\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g;
-        const boldRegex = /\*\*(.*?)\*\*/g;
-
-        let formatted = text
-          .replace(markdownLinkRegex, '<a href="$2" target="_blank">$1</a>')
-          .replace(boldRegex, '<strong>$1</strong>');
-
-        return e('span', { dangerouslySetInnerHTML: { __html: formatted } });
+   componentDidMount() {
+        this.fetchKeywords();
       }
+      handleButton = (type) => {
+        let reply;
+        if (type === 'men') {
+          reply = `
+    🧔‍♂️ <b>Men’s Products:</b><br>
+    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Men Care Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/men-care-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Men Care & Energy Booster Combo Pack</b> – <a href="https://jdwebservices.com/lavedaa/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>
+    `;
+        } else {
+          reply = `
+    👩‍🦰 <b>Women’s Products:</b><br>
+    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Women Care Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/women-care-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Women Care & Energy Booster Combo Pack</b> – <a href="https://jdwebservices.com/lavedaa/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>
+    `;
+        }
+
+        this.setState(prev => ({
+          messages: [...prev.messages, { sender: 'user', text: type }, { sender: 'bot', text: reply }]
+        }), this.scrollToBottom);
+      };
+
+      fetchKeywords = async () => {
+        try {
+          const response = await fetch('https://lachatbot.onrender.com/admin/keywords');
+          const data = await response.json();
+          if (data.success && Array.isArray(data.keywords)) {
+            this.setState({ keywords: data.keywords });
+          }
+        } catch (err) {
+          console.error("Failed to fetch keywords:", err);
+        }
+      };
+handleInput = () => {
+  const { input, messages, keywords } = this.state;
+  const lowerInput = input.toLowerCase();
+  let matched = null;
+
+  // Step 1: Check greetings
+  const greetings = ['hello', 'hi', 'hey', 'namaste'];
+  if (greetings.some(greet => lowerInput.includes(greet))) {
+    matched = "Hello! 👋 I’m your Ayurvedic wellness expert. Are you looking for products for men or women, or do you have a specific health concern?";
+  }
+
+  // Step 2: If not greeting, check for keyword match
+  if (!matched) {
+    for (const keyword of keywords) {
+      if (lowerInput.includes(keyword.phrase.toLowerCase())) {
+        matched = `We recommend our <b>${keyword.product}</b> – <a href="https://jdwebservices.com/lavedaa/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
+        break;
+      }
+    }
+  }
+
+  // Step 3: Default fallback
+  const botReply = matched || "Sorry, I didn’t understand that. Please choose from the options or use common keywords.";
+
+  this.setState({
+    input: '',
+    messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: botReply }]
+  }, this.scrollToBottom);
+};
+
+
 
       render() {
-        const { messages, input, loading, isMinimized, settings } = this.state;
+        const { messages, input, isMinimized, settings } = this.state;
         if (isMinimized) {
-          return window.React.createElement('div', {
-            onClick: this.toggleMinimize,
-            style: { position: 'relative' } // Add this to position the dot correctly
-          }, [
-            window.React.createElement('img', {
+          return e('div', { onClick: () => this.setState({ isMinimized: false }, () => applyStyles(settings, false)) }, [
+            e('img', {
               id: 'chatbot-minimized-img',
-              src: settings.avatar || 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
+              src: settings.avatar,
               alt: 'Chatbot'
             }),
-            window.React.createElement('div', { id: 'chatbot-online-dot' }) // Add the dot here
+            e('div', { id: 'chatbot-online-dot' })
           ]);
         }
 
-        return window.React.createElement('div', null, [
-          window.React.createElement('div', { id: 'chatbot-header' }, [
-            settings.avatar ? window.React.createElement('img', { id: 'chatbot-avatar', src: settings.avatar }) : null,
-            window.React.createElement('span', { id: 'chatbot-title' }, 'Ask LV'),
-            window.React.createElement('button', { id: 'chatbot-minimize-btn', onClick: this.toggleMinimize }, '×')
+        return e('div', null, [
+          e('div', { id: 'chatbot-header' }, [
+            e('img', { id: 'chatbot-avatar', src: settings.avatar }),
+            e('span', { id: 'chatbot-title' }, 'Ask LV'),
+            e('button', { id: 'chatbot-minimize-btn', onClick: () => this.setState({ isMinimized: true }, () => applyStyles(settings, true)) }, '×')
           ]),
-          window.React.createElement('div', { id: 'chatbot-messages' }, [
+          e('div', { id: 'chatbot-messages' }, [
             ...messages.map((msg, i) =>
-              window.React.createElement('div', {
-                key: i,
-                className: `message ${msg.sender}`
-              }, this.renderMessageText(msg.text))
+              e('div', { key: i, className: `message ${msg.sender}` }, e('span', { dangerouslySetInnerHTML: { __html: msg.text.replace(/\n/g, '<br>') } }))
             ),
-            window.React.createElement('div', { ref: this.messagesEndRef })
+            e('div', { className: 'quick-buttons' }, [
+              e('button', { onClick: () => this.handleButton('men') }, 'Men'),
+              e('button', { onClick: () => this.handleButton('women') }, 'Women')
+            ]),
+            e('div', { ref: this.messagesEndRef })
           ]),
-          window.React.createElement('div', { id: 'chatbot-input' }, [
-            window.React.createElement('input', {
-              type: 'text',
-              value: input,
+          e('div', { id: 'chatbot-input' }, [
+            e('input', {
+              type: 'text', value: input,
               onChange: e => this.setState({ input: e.target.value }),
-              onKeyPress: e => e.key === 'Enter' && this.sendMessage(),
-              placeholder: 'Type your message...',
-              disabled: loading
+              onKeyPress: e => e.key === 'Enter' && this.handleInput(),
+              placeholder: 'Type your message...'
             }),
-            window.React.createElement('button', { onClick: this.sendMessage, disabled: loading }, 'Send'),
-            window.React.createElement('button', {
-              onClick: this.resetSession,
-              style: { backgroundColor: '#ef4444' }
-            }, 'Reset Chat')
+            e('button', { onClick: this.handleInput }, 'Send')
           ])
         ]);
       }
-
-      toggleMinimize = () => {
-        this.setState(prev => {
-          const minimized = !prev.isMinimized;
-          applyStyles(prev.settings, minimized);
-          if (!minimized && prev.messages.length === 0) {
-            this.addWelcomeMessage();
-            this.fetchChats();
-          }
-          return { isMinimized: minimized };
-        });
-      };
     }
 
     window.ReactDOM.render(e(ChatbotWidget), widgetDiv);
@@ -382,17 +322,11 @@
     }
   }
 
-  function onScriptError(e) {
-    console.error('Failed to load script:', e.target.src);
-    widgetDiv.innerHTML = '<div style="padding: 10px; color: red;">Failed to load chatbot. Try again later.</div>';
-  }
-
   scripts.forEach(script => {
     const s = document.createElement('script');
     s.src = script.src;
     s.async = true;
     s.onload = onScriptLoad;
-    s.onerror = onScriptError;
     document.head.appendChild(s);
   });
 })();

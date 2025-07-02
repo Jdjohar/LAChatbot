@@ -41,7 +41,7 @@ const logger = winston.createLogger({
 
 
 const productKeywords = require('./productKeywords');
-const STATIC_DOMAINS = ['https://la-chatbot.vercel.app', 'http://127.0.0.1:5500'];
+const STATIC_DOMAINS = ['https://la-chatbot.vercel.app', 'http://127.0.0.1:5500', 'https://jdwebservices.com/', 'https://www.lavedaa.com/'];
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 const index = pinecone.Index(process.env.PINECONE_INDEX);
