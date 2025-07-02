@@ -7,7 +7,7 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'http://localhost:3000';
+  const apiUrl = 'https://lachatbot.onrender.com';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -19,7 +19,7 @@
     theme: '#1e3a8a',
     position: 'bottom-right',
     avatar: 'https://jdwebservices.com/lavedaa/wp-content/uploads/2025/06/vicon.png',
-    welcomeMessage: 'Hello and Welcome to La Vedaa I’m your Ayurvedic wellness expert, how can I help you?'
+    welcomeMessage: 'Welcome to La Vedaa, I’m your Ayurvedic wellness expert, how can I help you?'
   };
 
   function applyStyles(settings, isMinimized) {
@@ -204,21 +204,21 @@
         let reply;
         if (type === 'men') {
           reply = `
-    🧔‍♂️ <b>Men’s Products:</b><br>
-    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    🧔‍♂️ <b>La Vedaa Ayurveda for Men’s Complete Wellness:</b><br>
     • <b>La Vedaa Men Care Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/men-care-capsules/" target="_blank">View</a><br>
     • <b>La Vedaa Men Care & Energy Booster Combo Pack</b> – <a href="https://jdwebservices.com/lavedaa/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
     • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>
+    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
     `;
         } else {
           reply = `
-    👩‍🦰 <b>Women’s Products:</b><br>
-    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    👩‍🦰 <b>La Vedaa Ayurveda for Women’s Complete Wellness:</b><br>
     • <b>La Vedaa Women Care Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/women-care-capsules/" target="_blank">View</a><br>
     • <b>La Vedaa Women Care & Energy Booster Combo Pack</b> – <a href="https://jdwebservices.com/lavedaa/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
     • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>
+    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
     `;
         }
 
@@ -253,14 +253,14 @@ handleInput = () => {
   if (!matched) {
     for (const keyword of keywords) {
       if (lowerInput.includes(keyword.phrase.toLowerCase())) {
-        matched = `We recommend our <b>${keyword.product}</b> – <a href="https://jdwebservices.com/lavedaa/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
+        matched = `Wow, yes!, We recommend our <b>${keyword.product}</b> – <a href="https://jdwebservices.com/lavedaa/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
         break;
       }
     }
   }
 
   // Step 3: Default fallback
-  const botReply = matched || "Sorry, I didn’t understand that. Please choose from the options or use common keywords.";
+  const botReply = matched || "I'm sorry; I don't have information regarding this.";
 
   this.setState({
     input: '',
