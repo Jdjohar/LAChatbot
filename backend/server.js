@@ -214,6 +214,23 @@ app.use('/widget', widgetRoute);
 app.use('/admin', adminProductKeywordsRoutes);
 app.use('/admin', adminChatRoutes);
 
+app.post('/save-chat', authenticateApiKey, async (req, res) => {
+  const { userId, visitorId, message, reply } = req.body;
+
+  if (!userId || !visitorId || !message || !reply) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+
+  try {
+    const newChat = new Chat({ userId, visitorId, message, reply });
+    await newChat.save();
+    res.json({ success: true, chat: newChat });
+  } catch (err) {
+    console.error('Save chat error:', err);
+    res.status(500).json({ error: 'Failed to save chat' });
+  }
+});
+
 
 app.get('/chats', authenticateApiKey, async (req, res) => {
   const { visitorId } = req.query;

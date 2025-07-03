@@ -189,6 +189,7 @@
           loading: false,
           isMinimized: true,
           keywords: [],
+          showQuickButtons: true,
           settings: defaultSettings
         };
         this.messagesEndRef = window.React.createRef();
@@ -197,35 +198,42 @@
       scrollToBottom = () => {
         this.messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       };
-   componentDidMount() {
+      componentDidMount() {
         this.fetchKeywords();
+        const saved = localStorage.getItem('chatbot_messages');
+        if (saved) {
+          this.setState({ messages: JSON.parse(saved) });
+        } else {
+          this.setState({
+            messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
+            showQuickButtons: true
+          });
+        }
       }
       handleButton = (type) => {
         let reply;
         if (type === 'men') {
-          reply = `
-    🧔‍♂️ <b>La Vedaa Ayurveda for Men’s Complete Wellness:</b><br>
-    • <b>La Vedaa Men Care Capsules</b> – <a href="https://www.lavedaa.com/product/men-care-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Men Care & Energy Booster Combo Pack</b> – <a href="https://www.lavedaa.com/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>
-    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
-    `;
+          reply = `Here are our men’s products:<br>
+    - La Vedaa Deep Sleep Capsules – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    - La Vedaa Men Care Capsules – <a href="https://jdwebservices.com/lavedaa/product/men-care-capsules/" target="_blank">View</a><br>
+    - La Vedaa Men Care & Energy Booster Combo – <a href="https://jdwebservices.com/lavedaa/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
+    - La Vedaa Happy Heart Capsules – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
+    - La Vedaa Energy Booster Capsules – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>`;
         } else {
-          reply = `
-    👩‍🦰 <b>La Vedaa Ayurveda for Women’s Complete Wellness:</b><br>
-    • <b>La Vedaa Women Care Capsules</b> – <a href="https://www.lavedaa.com/product/women-care-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Women Care & Energy Booster Combo Pack</b> – <a href="https://www.lavedaa.com/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Energy Booster Capsules</b> – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>
-    • <b>La Vedaa Deep Sleep Capsules</b> – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    • <b>La Vedaa Happy Heart Capsules</b> – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
-    `;
+          reply = `Here are our women’s products:<br>
+    - La Vedaa Deep Sleep Capsules – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    - La Vedaa Women Care Capsules – <a href="https://jdwebservices.com/lavedaa/product/women-care-capsules/" target="_blank">View</a><br>
+    - La Vedaa Women Care & Energy Booster Combo – <a href="https://jdwebservices.com/lavedaa/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
+    - La Vedaa Happy Heart Capsules – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
+    - La Vedaa Energy Booster Capsules – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>`;
         }
 
         this.setState(prev => ({
-          messages: [...prev.messages, { sender: 'user', text: type }, { sender: 'bot', text: reply }]
+          messages: [...prev.messages, { sender: 'user', text: type }, { sender: 'bot', text: reply }],
+          showQuickButtons: false  // ✅ hide after selection
         }), this.scrollToBottom);
       };
+
 
       fetchKeywords = async () => {
         try {
@@ -238,35 +246,42 @@
           console.error("Failed to fetch keywords:", err);
         }
       };
-handleInput = () => {
-  const { input, messages, keywords } = this.state;
-  const lowerInput = input.toLowerCase();
-  let matched = null;
+      handleInput = () => {
+        const { input, messages, keywords } = this.state;
+        const lowerInput = input.toLowerCase();
+        let matched = null;
 
-  // Step 1: Check greetings
-  const greetings = ['hello', 'hi', 'hey', 'namaste'];
-  if (greetings.some(greet => lowerInput.includes(greet))) {
-    matched = "Hello! 👋 I’m your Ayurvedic wellness expert. Are you looking for products for men or women, or do you have a specific health concern?";
-  }
+        // Step 1: Check greetings
+        const greetings = ['hello', 'hi', 'hey', 'namaste'];
+        if (greetings.some(greet => lowerInput.includes(greet))) {
+          matched = "Hello! 👋 I’m your Ayurvedic wellness expert. Are you looking for products for men or women, or do you have a specific health concern?";
+        }
 
-  // Step 2: If not greeting, check for keyword match
-  if (!matched) {
-    for (const keyword of keywords) {
-      if (lowerInput.includes(keyword.phrase.toLowerCase())) {
-        matched = `Wow, yes!, We recommend our <b>${keyword.product}</b> – <a href="https://www.lavedaa.com/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
-        break;
-      }
-    }
-  }
+        // Step 2: If not greeting, check for keyword match
+        if (!matched) {
+          for (const keyword of keywords) {
+            if (lowerInput.includes(keyword.phrase.toLowerCase())) {
+              matched = `Wow, yes!, We recommend our <b>${keyword.product}</b> – <a href="https://www.lavedaa.com/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
+              break;
+            }
+          }
+        }
 
-  // Step 3: Default fallback
-  const botReply = matched || "I'm sorry; I don't have information regarding this.";
+        // Step 3: Default fallback
+        const botReply = matched || "I'm sorry; I don't have information regarding this.";
 
-  this.setState({
-    input: '',
-    messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: botReply }]
-  }, this.scrollToBottom);
-};
+        this.setState({
+          input: '',
+          messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: botReply }],
+          showQuickButtons: !matched
+        }, () => {
+          this.scrollToBottom();
+
+          const newChat = { userId, visitorId, message: input, reply: botReply };
+          saveChatToDB(userId, visitorId, input, botReply);
+          localStorage.setItem('chatbot_messages', JSON.stringify(this.state.messages));
+        });
+      };
 
 
 
@@ -293,12 +308,30 @@ handleInput = () => {
             ...messages.map((msg, i) =>
               e('div', { key: i, className: `message ${msg.sender}` }, e('span', { dangerouslySetInnerHTML: { __html: msg.text.replace(/\n/g, '<br>') } }))
             ),
-            e('div', { className: 'quick-buttons' }, [
+            this.state.showQuickButtons && e('div', { className: 'quick-buttons' }, [
               e('button', { onClick: () => this.handleButton('men') }, 'Men'),
               e('button', { onClick: () => this.handleButton('women') }, 'Women')
             ]),
             e('div', { ref: this.messagesEndRef })
           ]),
+          e('button', {
+            onClick: () => {
+              localStorage.removeItem('chatbot_messages');
+              this.setState({
+                messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
+                showQuickButtons: true
+              });
+            },
+            style: {
+              padding: '6px 10px',
+              margin: '10px auto',
+              backgroundColor: '#eee',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              alignSelf: 'center'
+            }
+          }, 'Reset Chat'),
           e('div', { id: 'chatbot-input' }, [
             e('input', {
               type: 'text', value: input,
@@ -314,7 +347,21 @@ handleInput = () => {
 
     window.ReactDOM.render(e(ChatbotWidget), widgetDiv);
   }
-
+  function saveChatToDB(userId, visitorId, message, reply) {
+    fetch(`${apiUrl}/save-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey
+      },
+      body: JSON.stringify({
+        userId,
+        visitorId,
+        message,
+        reply
+      })
+    }).catch(err => console.error('Save chat error:', err));
+  }
   function onScriptLoad() {
     scriptsLoaded++;
     if (scriptsLoaded === scripts.length) {
