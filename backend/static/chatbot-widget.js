@@ -200,7 +200,7 @@
       }
       .quick-buttons button {
         margin: 4px;
-        padding: 6px 12px;
+        padding: 0px 12px;
         background-color: ${settings.theme};
         color: white;
         border: none;
@@ -395,7 +395,7 @@
     });
   },
   style: {
-    padding: '8px 16px',
+    padding: '0px 0px',
     margin: '12px auto',
     backgroundColor: '#1e3a8a',    // your theme color
     color: '#fff',
