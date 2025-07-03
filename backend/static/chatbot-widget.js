@@ -7,8 +7,8 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  // const apiUrl = 'https://lachatbot.onrender.com';
-  const apiUrl = 'http://localhost:3000';
+  const apiUrl = 'https://lachatbot.onrender.com';
+  // const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
