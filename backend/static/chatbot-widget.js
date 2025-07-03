@@ -8,6 +8,7 @@
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
   const apiUrl = 'https://lachatbot.onrender.com';
+  // const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -18,9 +19,53 @@
   const defaultSettings = {
     theme: '#1e3a8a',
     position: 'bottom-right',
-    avatar: 'https://www.lavedaa.com/wp-content/uploads/2025/06/vicon.png',
+    avatar: 'https://www.lavedaa.com/wp-content/uploads/2025/07/item.png',
     welcomeMessage: 'Welcome to La Vedaa, I’m your Ayurvedic wellness expert, how can I help you?'
   };
+
+  (function injectDefaultStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+      #chatbot-widget {
+        position: fixed;
+        ${defaultSettings.position === 'bottom-right' ? 'bottom: 100px; right: 36px;' : 'bottom: 20px; left: 20px;'}
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999999;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      #chatbot-minimized-img {
+        width: 55px;
+        height: 55px;
+        object-fit: cover;
+        border: 2px solid #fff;
+        box-shadow: 2px 2px 10px #cfcfcf;
+        border-radius: 50%;
+      }
+      #chatbot-online-dot {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        width: 14px;
+        height: 14px;
+        background-color: #10b981;
+        border: 2px solid white;
+        border-radius: 50%;
+        z-index: 1000000;
+      }
+      /* Add more CSS here as per default applyStyles for minimized */
+    `;
+    document.head.appendChild(style);
+  })();
+
 
   function applyStyles(settings, isMinimized) {
     const style = document.createElement('style');
@@ -289,14 +334,41 @@
         const { messages, input, isMinimized, settings } = this.state;
         if (isMinimized) {
           return e('div', { onClick: () => this.setState({ isMinimized: false }, () => applyStyles(settings, false)) }, [
-            e('img', {
-              id: 'chatbot-minimized-img',
-              src: settings.avatar,
-              alt: 'Chatbot'
-            }),
+            e('div', { style: { position: 'relative', width: '60px', height: '60px', cursor: 'pointer' } }, [
+              // Avatar Image
+              e('img', {
+                id: 'chatbot-minimized-img',
+                src: settings.avatar,
+                alt: 'Chatbot',
+                style: { width: '60px', height: '60px', borderRadius: '50%', position: 'absolute', top: 0, left: 0, zIndex: 1 }
+              }),
+              // SVG curved text - single instance, bigger font, slightly outside circle
+              e('svg', {
+                width: 120,
+                height: 120,
+                viewBox: '0 0 120 120',
+                style: { position: 'absolute', top: -27, left: -27, zIndex: 2, pointerEvents: 'none' }
+              }, [
+                e('defs', null, [
+                  e('path', { id: 'circlePath', d: 'M60,60 m-45,0 a45,45 0 1,1 90,0 a45,45 0 1,1 -90,0' })
+                ]),
+                e('text', {
+                  fill: settings.theme,
+                  fontSize: 14,
+                  fontWeight: '700',
+                  letterSpacing: '1.5px',
+                  textAnchor: 'middle'
+                }, [
+                  e('textPath', { href: '#circlePath', startOffset: '25%' }, 'ASK LV')
+                ])
+              ])
+
+            ]),
             e('div', { id: 'chatbot-online-dot' })
           ]);
         }
+
+
 
         return e('div', null, [
           e('div', { id: 'chatbot-header' }, [
