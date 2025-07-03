@@ -7,8 +7,8 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'https://lachatbot.onrender.com';
-  // const apiUrl = 'http://localhost:3000';
+  // const apiUrl = 'https://lachatbot.onrender.com';
+  const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -386,24 +386,33 @@
             ]),
             e('div', { ref: this.messagesEndRef })
           ]),
-          e('button', {
-            onClick: () => {
-              localStorage.removeItem('chatbot_messages');
-              this.setState({
-                messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
-                showQuickButtons: true
-              });
-            },
-            style: {
-              padding: '6px 10px',
-              margin: '10px auto',
-              backgroundColor: '#eee',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer',
-              alignSelf: 'center'
-            }
-          }, 'Reset Chat'),
+         e('button', {
+  onClick: () => {
+    localStorage.removeItem('chatbot_messages');
+    this.setState({
+      messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
+      showQuickButtons: true
+    });
+  },
+  style: {
+    padding: '8px 16px',
+    margin: '12px auto',
+    backgroundColor: '#1e3a8a',    // your theme color
+    color: '#fff',
+    border: 'none',
+    borderRadius: '24px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    fontSize: '14px',
+    boxShadow: '0 4px 8px rgba(30, 58, 138, 0.3)',
+    transition: 'background-color 0.3s ease',
+    display: 'block',
+    textAlign: 'center',
+    width: '140px',
+  },
+  onMouseEnter: e => e.currentTarget.style.backgroundColor = '#153a75',
+  onMouseLeave: e => e.currentTarget.style.backgroundColor = '#1e3a8a'
+}, 'Reset Chat'),
           e('div', { id: 'chatbot-input' }, [
             e('input', {
               type: 'text', value: input,
