@@ -7,8 +7,8 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  const apiUrl = 'https://lachatbot.onrender.com';
-  // const apiUrl = 'http://localhost:3000';
+  // const apiUrl = 'https://lachatbot.onrender.com';
+  const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -350,14 +350,24 @@
                 style: { position: 'absolute', top: -27, left: -27, zIndex: 2, pointerEvents: 'none' }
               }, [
                 e('defs', null, [
-                  e('path', { id: 'circlePath', d: 'M60,60 m-45,0 a45,45 0 1,1 90,0 a45,45 0 1,1 -90,0' })
+                  e('path', { id: 'circlePath', d: 'M60,60 m-45,0 a45,45 0 1,1 90,0 a45,45 0 1,1 -90,0' }),
+                  e('linearGradient', { id: 'textGradient', x1: '0%', y1: '0%', x2: '100%', y2: '0%' }, [
+                    e('stop', { offset: '0%', style: { stopColor: '#016a6d', stopOpacity: 1 } }),
+                    e('stop', { offset: '100%', style: { stopColor: '#016a6d', stopOpacity: 1 } })
+                  ])
                 ]),
                 e('text', {
-                  fill: settings.theme,
-                  fontSize: 14,
-                  fontWeight: '700',
-                  letterSpacing: '1.5px',
-                  textAnchor: 'middle'
+                  fontSize: 20,
+                  fontWeight: '900',
+                  fontFamily: '"Segoe UI", "Poppins", sans-serif',
+                  textAnchor: 'middle',
+                  fill: 'url(#textGradient)',
+                  stroke: '#ffffff',          // White border
+                  strokeWidth: 0.6,           // Thickness of the border
+                  style: {
+                    filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.4))',
+                    textTransform: 'uppercase'
+                  }
                 }, [
                   e('textPath', { href: '#circlePath', startOffset: '25%' }, 'ASK LV')
                 ])
@@ -386,33 +396,33 @@
             ]),
             e('div', { ref: this.messagesEndRef })
           ]),
-         e('button', {
-  onClick: () => {
-    localStorage.removeItem('chatbot_messages');
-    this.setState({
-      messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
-      showQuickButtons: true
-    });
-  },
-  style: {
-    padding: '0px 0px',
-    margin: '12px auto',
-    backgroundColor: '#1e3a8a',    // your theme color
-    color: '#fff',
-    border: 'none',
-    borderRadius: '24px',
-    cursor: 'pointer',
-    fontWeight: '600',
-    fontSize: '14px',
-    boxShadow: '0 4px 8px rgba(30, 58, 138, 0.3)',
-    transition: 'background-color 0.3s ease',
-    display: 'block',
-    textAlign: 'center',
-    width: '140px',
-  },
-  onMouseEnter: e => e.currentTarget.style.backgroundColor = '#153a75',
-  onMouseLeave: e => e.currentTarget.style.backgroundColor = '#1e3a8a'
-}, 'Reset Chat'),
+          e('button', {
+            onClick: () => {
+              localStorage.removeItem('chatbot_messages');
+              this.setState({
+                messages: [{ sender: 'bot', text: defaultSettings.welcomeMessage }],
+                showQuickButtons: true
+              });
+            },
+            style: {
+              padding: '0px 0px',
+              margin: '12px auto',
+              backgroundColor: '#1e3a8a',    // your theme color
+              color: '#fff',
+              border: 'none',
+              borderRadius: '24px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              boxShadow: '0 4px 8px rgba(30, 58, 138, 0.3)',
+              transition: 'background-color 0.3s ease',
+              display: 'block',
+              textAlign: 'center',
+              width: '140px',
+            },
+            onMouseEnter: e => e.currentTarget.style.backgroundColor = '#153a75',
+            onMouseLeave: e => e.currentTarget.style.backgroundColor = '#1e3a8a'
+          }, 'Reset Chat'),
           e('div', { id: 'chatbot-input' }, [
             e('input', {
               type: 'text', value: input,
