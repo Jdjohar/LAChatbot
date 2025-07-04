@@ -7,8 +7,8 @@
   const widgetScript = document.currentScript;
   const userId = widgetScript.dataset.userId;
   const apiKey = widgetScript.dataset.apiKey;
-  // const apiUrl = 'https://lachatbot.onrender.com';
-  const apiUrl = 'http://localhost:3000';
+  const apiUrl = 'https://lachatbot.onrender.com';
+  // const apiUrl = 'http://localhost:3000';
 
   let visitorId = localStorage.getItem('chatbot_visitor_id');
   if (!visitorId) {
@@ -259,18 +259,20 @@
         let reply;
         if (type === 'men') {
           reply = `Here are our men’s products:<br>
-    - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    - La Vedaa Men Care Capsules – <a href="https://www.lavedaa.com/product/men-care-capsules/" target="_blank">View</a><br>
-    - La Vedaa Men Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
-    - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
-    - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>`;
+          - La Vedaa Men Care Capsules – <a href="https://www.lavedaa.com/product/men-care-capsules/" target="_blank">View</a><br>
+          - La Vedaa Men Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
+          - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>
+          - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
+          - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
+    `;
         } else {
           reply = `Here are our women’s products:<br>
-    - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    - La Vedaa Women Care Capsules – <a href="https://www.lavedaa.com/product/women-care-capsules/" target="_blank">View</a><br>
-    - La Vedaa Women Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
-    - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
-    - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>`;
+          - La Vedaa Women Care Capsules – <a href="https://www.lavedaa.com/product/women-care-capsules/" target="_blank">View</a><br>
+          - La Vedaa Women Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
+          - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>
+          - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
+          - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
+    `;
         }
 
         this.setState(prev => ({
@@ -291,42 +293,76 @@
           console.error("Failed to fetch keywords:", err);
         }
       };
-      handleInput = () => {
-        const { input, messages, keywords } = this.state;
-        const lowerInput = input.toLowerCase();
-        let matched = null;
+    handleInput = () => {
+  const { input, messages, keywords } = this.state;
+  if (!input.trim()) return; // avoid empty messages
 
-        // Step 1: Check greetings
-        const greetings = ['hello', 'hi', 'hey', 'namaste'];
-        if (greetings.some(greet => lowerInput.includes(greet))) {
-          matched = "Hello! 👋 I’m your Ayurvedic wellness expert. Are you looking for products for men or women, or do you have a specific health concern?";
+  const lowerInput = input.toLowerCase();
+  let matched = null;
+
+  // Step 1: Check greetings
+  const greetings = ['hello', 'hi', 'hey', 'namaste'];
+  if (greetings.some(greet => lowerInput.includes(greet))) {
+    matched = "Hello! 👋 I’m your Ayurvedic wellness expert. Are you looking for products for men or women, or do you have a specific health concern?";
+  }
+
+  const productLinks = {
+    "La Vedaa Deep Sleep Capsules": "https://www.lavedaa.com/product/deep-sleep-capsules/",
+    "La Vedaa Men Care Capsules": "https://www.lavedaa.com/product/men-care-capsules/",
+    "La Vedaa Men Care & Energy Booster Combo": "https://www.lavedaa.com/product/combo-of-men-care-energy-booster-capsules/",
+    "La Vedaa Happy Heart Capsules": "https://www.lavedaa.com/product/happy-heart-capsules/",
+    "La Vedaa Energy Booster Capsules": "https://www.lavedaa.com/product/energy-booster-capsules/",
+    "La Vedaa Women Care Capsules": "https://www.lavedaa.com/product/women-care-capsules/",
+    "La Vedaa Women Care & Energy Booster Combo": "https://www.lavedaa.com/product/combo-of-women-care-energy-booster-capsules/"
+  };
+
+  // Step 2: Check keywords if no greeting matched
+  if (!matched) {
+    for (const keyword of keywords) {
+      if (lowerInput.includes(keyword.phrase.toLowerCase())) {
+        const url = productLinks[keyword.product];
+        if (url) {
+          matched = `Wow, yes!, We recommend our <b>${keyword.product}</b> – <a href="${url}" target="_blank">View</a>`;
+        } else {
+          matched = `Wow, yes!, We recommend our <b>${keyword.product}</b>.`;
         }
+        break;
+      }
+    }
+  }
 
-        // Step 2: If not greeting, check for keyword match
-        if (!matched) {
-          for (const keyword of keywords) {
-            if (lowerInput.includes(keyword.phrase.toLowerCase())) {
-              matched = `Wow, yes!, We recommend our <b>${keyword.product}</b> – <a href="https://www.lavedaa.com/product/${keyword.product.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '')}/" target="_blank">View</a>`;
-              break;
-            }
+  // Step 3: Fallback message
+  const botReply = matched || "I'm sorry; I don't have information regarding this.";
+
+  // Add user message immediately
+  this.setState({
+    input: '',
+    messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: '...' }],
+    showQuickButtons: !matched
+  }, () => {
+    this.scrollToBottom();
+
+    // After delay, replace '...' with actual reply
+    setTimeout(() => {
+      this.setState(prevState => {
+        const newMessages = [...prevState.messages];
+        // Find the last bot message which is '...' and replace it
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].sender === 'bot' && newMessages[i].text === '...') {
+            newMessages[i].text = botReply;
+            break;
           }
         }
+        // Save messages to localStorage here after update
+        localStorage.setItem('chatbot_messages', JSON.stringify(newMessages));
+        // Save to DB here after update
+        saveChatToDB(userId, visitorId, input, botReply);
+        return { messages: newMessages };
+      }, this.scrollToBottom);
+    }, 1500); // 1.5 seconds delay before showing actual reply
+  });
+};
 
-        // Step 3: Default fallback
-        const botReply = matched || "I'm sorry; I don't have information regarding this.";
-
-        this.setState({
-          input: '',
-          messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: botReply }],
-          showQuickButtons: !matched
-        }, () => {
-          this.scrollToBottom();
-
-          const newChat = { userId, visitorId, message: input, reply: botReply };
-          saveChatToDB(userId, visitorId, input, botReply);
-          localStorage.setItem('chatbot_messages', JSON.stringify(this.state.messages));
-        });
-      };
 
 
 
@@ -460,11 +496,14 @@
     }
   }
 
-  scripts.forEach(script => {
-    const s = document.createElement('script');
-    s.src = script.src;
-    s.async = true;
-    s.onload = onScriptLoad;
-    document.head.appendChild(s);
+  // Load required scripts
+  scripts.forEach(scriptData => {
+    const script = document.createElement('script');
+    script.src = scriptData.src;
+    script.onload = onScriptLoad;
+    script.onerror = () => {
+      console.error(`Failed to load script: ${scriptData.src}`);
+    };
+    document.head.appendChild(script);
   });
 })();
