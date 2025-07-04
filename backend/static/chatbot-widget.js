@@ -259,18 +259,18 @@
         let reply;
         if (type === 'men') {
           reply = `Here are our men’s products:<br>
-    - La Vedaa Deep Sleep Capsules – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    - La Vedaa Men Care Capsules – <a href="https://jdwebservices.com/lavedaa/product/men-care-capsules/" target="_blank">View</a><br>
-    - La Vedaa Men Care & Energy Booster Combo – <a href="https://jdwebservices.com/lavedaa/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
-    - La Vedaa Happy Heart Capsules – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
-    - La Vedaa Energy Booster Capsules – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>`;
+    - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    - La Vedaa Men Care Capsules – <a href="https://www.lavedaa.com/product/men-care-capsules/" target="_blank">View</a><br>
+    - La Vedaa Men Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-men-care-energy-booster-capsules/" target="_blank">View</a><br>
+    - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
+    - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>`;
         } else {
           reply = `Here are our women’s products:<br>
-    - La Vedaa Deep Sleep Capsules – <a href="https://jdwebservices.com/lavedaa/product/deep-sleep-capsules/" target="_blank">View</a><br>
-    - La Vedaa Women Care Capsules – <a href="https://jdwebservices.com/lavedaa/product/women-care-capsules/" target="_blank">View</a><br>
-    - La Vedaa Women Care & Energy Booster Combo – <a href="https://jdwebservices.com/lavedaa/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
-    - La Vedaa Happy Heart Capsules – <a href="https://jdwebservices.com/lavedaa/product/happy-heart-capsules/" target="_blank">View</a><br>
-    - La Vedaa Energy Booster Capsules – <a href="https://jdwebservices.com/lavedaa/product/energy-booster-capsules/" target="_blank">View</a>`;
+    - La Vedaa Deep Sleep Capsules – <a href="https://www.lavedaa.com/product/deep-sleep-capsules/" target="_blank">View</a><br>
+    - La Vedaa Women Care Capsules – <a href="https://www.lavedaa.com/product/women-care-capsules/" target="_blank">View</a><br>
+    - La Vedaa Women Care & Energy Booster Combo – <a href="https://www.lavedaa.com/product/combo-of-women-care-energy-booster-capsules/" target="_blank">View</a><br>
+    - La Vedaa Happy Heart Capsules – <a href="https://www.lavedaa.com/product/happy-heart-capsules/" target="_blank">View</a><br>
+    - La Vedaa Energy Booster Capsules – <a href="https://www.lavedaa.com/product/energy-booster-capsules/" target="_blank">View</a>`;
         }
 
         this.setState(prev => ({
