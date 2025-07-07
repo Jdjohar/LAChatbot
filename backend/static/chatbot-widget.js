@@ -293,7 +293,7 @@
           console.error("Failed to fetch keywords:", err);
         }
       };
-    handleInput = () => {
+handleInput = () => {
   const { input, messages, keywords } = this.state;
   if (!input.trim()) return; // avoid empty messages
 
@@ -334,15 +334,15 @@
   // Step 3: Fallback message
   const botReply = matched || "I'm sorry; I don't have information regarding this.";
 
-  // Add user message immediately
+  // Add user message and placeholder immediately
   this.setState({
     input: '',
     messages: [...messages, { sender: 'user', text: input }, { sender: 'bot', text: '...' }],
-    showQuickButtons: !matched
+    showQuickButtons: false // Temporarily hide quick buttons during loading
   }, () => {
     this.scrollToBottom();
 
-    // After delay, replace '...' with actual reply
+    // After 1500ms delay, update messages and showQuickButtons
     setTimeout(() => {
       this.setState(prevState => {
         const newMessages = [...prevState.messages];
@@ -357,9 +357,12 @@
         localStorage.setItem('chatbot_messages', JSON.stringify(newMessages));
         // Save to DB here after update
         saveChatToDB(userId, visitorId, input, botReply);
-        return { messages: newMessages };
+        return { 
+          messages: newMessages,
+          showQuickButtons: matched && greetings.some(greet => lowerInput.includes(greet)) ? true : !matched // Update quick buttons after delay
+        };
       }, this.scrollToBottom);
-    }, 1500); // 1.5 seconds delay before showing actual reply
+    }, 1500); // 1.5 seconds delay before showing actual reply and quick buttons
   });
 };
 
